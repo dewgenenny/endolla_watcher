@@ -12,7 +12,9 @@ source venv/bin/activate
 pip install -r requirements.txt
 pip install -e .
 python -m endolla_watcher.main --file endolla.json --output site/index.html
-python -m endolla_watcher.loop --interval 300 --db endolla.db
+python -m endolla_watcher.loop --interval 300 --db endolla.db \
+    --unused-days 4 --long-session-days 2 --long-session-min 5 \
+    --unavailable-hours 24
 ```
 
 The site can then be served from the `site/` directory.
