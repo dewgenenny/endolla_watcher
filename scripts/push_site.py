@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Push the generated site to the gh-pages branch."""
 import argparse
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -18,6 +19,8 @@ def main() -> None:
     parser.add_argument('--site', default='site', help='Directory containing the generated site')
     parser.add_argument('--branch', default='gh-pages', help='Branch to push to')
     parser.add_argument('--remote', default='origin', help='Remote name')
+    parser.add_argument('--repo', default=os.environ.get('REPO_URL', '.'),
+                        help='Repository URL or path to clone')
     args = parser.parse_args()
 
     site_dir = Path(args.site)
@@ -26,8 +29,17 @@ def main() -> None:
         sys.exit(1)
 
     tmpdir = Path(tempfile.mkdtemp())
-    run('git', 'clone', '.', str(tmpdir))
+    token = os.environ.get('GH_TOKEN') or os.environ.get('GITHUB_TOKEN')
+    repo_url = args.repo
+    if token and repo_url.startswith('https://') and '@' not in repo_url:
+        repo_url = repo_url.replace('https://', f'https://{token}@')
+
+    run('git', 'clone', repo_url, str(tmpdir))
     run('git', 'checkout', '-B', args.branch, cwd=tmpdir)
+    if os.environ.get('GH_NAME'):
+        run('git', 'config', 'user.name', os.environ['GH_NAME'], cwd=tmpdir)
+    if os.environ.get('GH_EMAIL'):
+        run('git', 'config', 'user.email', os.environ['GH_EMAIL'], cwd=tmpdir)
 
     for item in tmpdir.iterdir():
         if item.name == '.git':
@@ -49,6 +61,7 @@ def main() -> None:
     if result.returncode != 0:
         msg = f"Update site {datetime.utcnow():%Y-%m-%d %H:%M:%S UTC}"
         run('git', 'commit', '-m', msg, cwd=tmpdir)
+        run('git', 'remote', 'set-url', args.remote, repo_url, cwd=tmpdir)
         run('git', 'push', args.remote, args.branch, cwd=tmpdir)
     else:
         print('No changes to commit')

@@ -1,4 +1,6 @@
 import argparse
+import os
+import subprocess
 import time
 import logging
 from pathlib import Path
@@ -56,6 +58,26 @@ def main() -> None:
     parser.add_argument("--long-session-min", type=int, default=5)
     parser.add_argument("--unavailable-hours", type=int, default=24)
     parser.add_argument(
+        "--push-site",
+        action="store_true",
+        help="Push the generated site to the repository after each update",
+    )
+    parser.add_argument(
+        "--push-repo",
+        default=os.getenv("REPO_URL"),
+        help="Repository URL for push_site.py",
+    )
+    parser.add_argument(
+        "--push-branch",
+        default="gh-pages",
+        help="Branch to push the site to",
+    )
+    parser.add_argument(
+        "--push-remote",
+        default="origin",
+        help="Remote name for push_site.py",
+    )
+    parser.add_argument(
         "--debug",
         action="store_true",
         help="Enable debug logging",
@@ -84,6 +106,22 @@ def main() -> None:
         if now >= next_update:
             logger.info("Updating report")
             update_once(args.output, args.db, rules)
+            if args.push_site:
+                cmd = [
+                    "push_site.py",
+                    "--site",
+                    str(args.output.parent),
+                    "--branch",
+                    args.push_branch,
+                    "--remote",
+                    args.push_remote,
+                ]
+                if args.push_repo:
+                    cmd.extend(["--repo", args.push_repo])
+                try:
+                    subprocess.check_call(cmd)
+                except subprocess.CalledProcessError as exc:
+                    logger.error("push_site failed: %s", exc)
             next_update = now + args.update_interval
 
         sleep_for = min(next_fetch, next_update) - now
