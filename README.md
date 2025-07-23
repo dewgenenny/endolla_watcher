@@ -12,7 +12,7 @@ source venv/bin/activate
 pip install -r requirements.txt
 pip install -e .
 python -m endolla_watcher.main --file endolla.json --output site/index.html
-python -m endolla_watcher.loop --interval 300
+python -m endolla_watcher.loop --interval 300 --db endolla.db
 ```
 
 The site can then be served from the `site/` directory.
@@ -21,7 +21,9 @@ The site can then be served from the `site/` directory.
 
 ```
 docker build -t endolla-watcher .
-docker run -v $(pwd)/endolla.json:/data/endolla.json endolla-watcher
+docker run -v $(pwd)/endolla.json:/data/endolla.json \
+           -v $(pwd)/endolla.db:/data/endolla.db \
+           endolla-watcher
 ```
 
 ## Automation
