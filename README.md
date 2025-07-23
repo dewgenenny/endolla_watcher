@@ -26,12 +26,18 @@ docker build -t endolla-watcher .
 docker run -v $(pwd)/endolla.json:/data/endolla.json \
            -v $(pwd)/endolla.db:/data/endolla.db \
            -v $(pwd)/site:/data/site \
+           -e GH_TOKEN=YOURTOKEN \
+           -e REPO_URL=https://github.com/you/repo.git \
+           -e GH_NAME="Your Name" \
+           -e GH_EMAIL=you@example.com \
            endolla-watcher \
-           --fetch-interval 300 --update-interval 3600
+           --fetch-interval 300 --update-interval 3600 \
+           --push-site
 ```
 
 The image contains `git` and the `push_site.py` helper so updates can be
-published directly from within the container.
+published directly from within the container. Provide the GitHub token and
+repository URL as shown above to enable automatic pushes.
 
 ## Automation
 
@@ -39,7 +45,9 @@ A GitHub Actions workflow (`.github/workflows/docker.yml`) builds the Docker
 image and pushes it to Docker Hub. Configure the `DOCKERHUB_USERNAME` and
 `DOCKERHUB_TOKEN` secrets for authentication.
 
-Run the Docker container on your own server and generate the site locally. The
-`scripts/push_site.py` helper commits the contents of the `site/` directory to
-the `gh-pages` branch and pushes the update. Schedule the container and helper
-via cron or another task runner.
+Run the Docker container on your own server and generate the site locally.
+Set the `GH_TOKEN` environment variable to a GitHub token with permission to
+push to the repository and provide the repository URL via `REPO_URL`. When the
+container is started with the `--push-site` flag, the site will be committed and
+pushed to the `gh-pages` branch automatically after each update interval.
+The commit author can be configured with `GH_NAME` and `GH_EMAIL`.
