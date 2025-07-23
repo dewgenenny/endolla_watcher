@@ -136,6 +136,10 @@ def analyze_recent(conn: sqlite3.Connection, days: int = 7, short_threshold: int
                 }
             )
             logger.debug("Port %s has %d short sessions", port, len(short))
+            continue
+
+        logger.debug("Port %s is healthy", port)
+
     logger.debug("Identified %d problematic ports", len(problematic))
     return problematic
 
@@ -205,6 +209,8 @@ def analyze_chargers(conn: sqlite3.Connection, rules: Rules | None = None) -> Li
                     "reason": ", ".join(reasons),
                 }
             )
+        else:
+            logger.debug("Charger %s/%s is healthy", loc, sta)
 
     logger.debug("Identified %d problematic chargers", len(problematic))
     return problematic
