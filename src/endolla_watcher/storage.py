@@ -164,40 +164,59 @@ def analyze_chargers(conn: sqlite3.Connection, rules: Rules | None = None) -> Li
     for (loc, sta), ports in stations.items():
         reasons: List[str] = []
 
+        # Determine how much history we have for this charger
+        earliest_ts = min(ts for events in ports.values() for ts, _ in events)
+        history_span = now - earliest_ts
+
         # Rule 1: no usage for more than N days
-        since_unused = now - timedelta(days=rules.unused_days)
-        used_recently = any(
-            any(status == "IN_USE" and ts >= since_unused for ts, status in events)
-            for events in ports.values()
-        )
-        if not used_recently:
-            reasons.append(f"unused > {rules.unused_days}d")
+        if history_span >= timedelta(days=rules.unused_days):
+            since_unused = now - timedelta(days=rules.unused_days)
+            used_recently = any(
+                any(status == "IN_USE" and ts >= since_unused for ts, status in events)
+                for events in ports.values()
+            )
+            if not used_recently:
+                reasons.append(f"unused > {rules.unused_days}d")
+        else:
+            logger.debug(
+                "Skipping unused rule for %s/%s due to insufficient history", loc, sta
+            )
 
         # Rule 2: no long sessions in past window
-        since_long = now - timedelta(days=rules.long_session_days)
-        has_long = any(
-            any(
-                d >= rules.long_session_min
-                for d in _session_durations([(ts, st) for ts, st in events if ts >= since_long])
+        if history_span >= timedelta(days=rules.long_session_days):
+            since_long = now - timedelta(days=rules.long_session_days)
+            has_long = any(
+                any(
+                    d >= rules.long_session_min
+                    for d in _session_durations([(ts, st) for ts, st in events if ts >= since_long])
+                )
+                for events in ports.values()
             )
-            for events in ports.values()
-        )
-        if not has_long:
-            reasons.append(
-                f"no session >= {rules.long_session_min}min in {rules.long_session_days}d"
+            if not has_long:
+                reasons.append(
+                    f"no session >= {rules.long_session_min}min in {rules.long_session_days}d"
+                )
+        else:
+            logger.debug(
+                "Skipping long session rule for %s/%s due to insufficient history", loc, sta
             )
 
         # Rule 3: all ports unavailable for continuous hours
-        since_unavail = now - timedelta(hours=rules.unavailable_hours)
-        all_unavail = all(
-            all(
-                status in UNAVAILABLE_STATUSES for ts, status in events if ts >= since_unavail
+        if history_span >= timedelta(hours=rules.unavailable_hours):
+            since_unavail = now - timedelta(hours=rules.unavailable_hours)
+            all_unavail = all(
+                all(
+                    status in UNAVAILABLE_STATUSES for ts, status in events if ts >= since_unavail
+                )
+                and any(ts >= since_unavail for ts, _ in events)
+                for events in ports.values()
             )
-            and any(ts >= since_unavail for ts, _ in events)
-            for events in ports.values()
-        )
-        if all_unavail and ports:
-            reasons.append(f"unavailable > {rules.unavailable_hours}h")
+            if all_unavail and ports:
+                reasons.append(f"unavailable > {rules.unavailable_hours}h")
+        else:
+            logger.debug(
+                "Skipping unavailable rule for %s/%s due to insufficient history", loc, sta
+            )
 
         if reasons:
             problematic.append(
