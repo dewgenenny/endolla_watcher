@@ -15,5 +15,8 @@ This project monitors the Barcelona Endolla open data to find underused or out-o
 - Docker support is expected for local development and CI.
 
 ## TODO
+_None_
+
+## Completed
 - Dockerise the loop functionality so it can run unattended.
 - Create a script to push the updated site via git on a schedule.

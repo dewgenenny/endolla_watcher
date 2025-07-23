@@ -34,3 +34,7 @@ docker run -v $(pwd)/endolla.json:/data/endolla.json \
 
 GitHub Actions (`.github/workflows/update.yml`) periodically runs the watcher
 and deploys the generated HTML to the `gh-pages` branch.
+
+For local deployments, the `scripts/push_site.py` helper commits the contents of
+the `site/` directory to the `gh-pages` branch and pushes the update. It can be
+invoked manually or on a schedule via cron.
