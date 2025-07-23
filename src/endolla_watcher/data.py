@@ -3,7 +3,12 @@ from pathlib import Path
 from typing import Any, Dict, List
 import requests
 
-ENDOLLA_URL = "https://opendata.barcelona.cat/resource/endolla.json"
+# Public download endpoint for the Endolla dataset
+ENDOLLA_URL = (
+    "https://opendata-ajuntament.barcelona.cat/data/dataset/"
+    "a2bd4c83-d024-4d78-8436-040ef996cf7f/resource/"
+    "ada4c823-9566-477d-9362-7b15e7d38189/download"
+)
 
 
 def fetch_data(path: Path | None = None) -> Dict[str, Any]:
