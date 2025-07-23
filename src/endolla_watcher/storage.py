@@ -2,6 +2,9 @@ import sqlite3
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Tuple
+import logging
+
+logger = logging.getLogger(__name__)
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS port_status (
@@ -20,6 +23,7 @@ PortKey = Tuple[str | None, str | None, str | None]
 
 def connect(path: Path) -> sqlite3.Connection:
     """Open connection and ensure schema exists."""
+    logger.debug("Connecting to database %s", path)
     conn = sqlite3.connect(path)
     conn.executescript(SCHEMA)
     return conn
@@ -29,6 +33,7 @@ def save_snapshot(conn: sqlite3.Connection, records: Iterable[Dict[str, Any]], t
     """Persist a snapshot of all port statuses."""
     if ts is None:
         ts = datetime.now().astimezone()
+    logger.debug("Saving snapshot at %s", ts)
     rows = [
         (
             ts.isoformat(),
@@ -45,6 +50,7 @@ def save_snapshot(conn: sqlite3.Connection, records: Iterable[Dict[str, Any]], t
         rows,
     )
     conn.commit()
+    logger.debug("Saved snapshot with %d rows", len(rows))
 
 
 def _session_durations(statuses: List[Tuple[datetime, str]]) -> List[float]:
@@ -59,11 +65,13 @@ def _session_durations(statuses: List[Tuple[datetime, str]]) -> List[float]:
             if start is not None:
                 sessions.append((ts - start).total_seconds() / 60)
                 start = None
+    logger.debug("Computed %d session durations", len(sessions))
     return sessions
 
 
 def recent_sessions(conn: sqlite3.Connection, since: datetime) -> Dict[PortKey, List[float]]:
     """Get session durations for each port since a given time."""
+    logger.debug("Fetching sessions since %s", since)
     cur = conn.execute(
         "SELECT location_id, station_id, port_id, ts, status FROM port_status WHERE ts >= ? ORDER BY location_id, station_id, port_id, ts",
         (since.isoformat(),),
@@ -72,12 +80,15 @@ def recent_sessions(conn: sqlite3.Connection, since: datetime) -> Dict[PortKey, 
     for loc, sta, port, ts, status in cur:
         key = (loc, sta, port)
         history.setdefault(key, []).append((datetime.fromisoformat(ts), status))
-    return {k: _session_durations(v) for k, v in history.items()}
+    result = {k: _session_durations(v) for k, v in history.items()}
+    logger.debug("Loaded history for %d ports", len(result))
+    return result
 
 
 def analyze_recent(conn: sqlite3.Connection, days: int = 7, short_threshold: int = 3) -> List[Dict[str, Any]]:
     """Return problematic chargers based on recent history."""
     since = datetime.now().astimezone() - timedelta(days=days)
+    logger.debug("Analyzing recent data since %s", since)
     sessions = recent_sessions(conn, since)
     problematic: List[Dict[str, Any]] = []
     for (loc, sta, port), durs in sessions.items():
@@ -91,6 +102,7 @@ def analyze_recent(conn: sqlite3.Connection, days: int = 7, short_threshold: int
                     "reason": "no sessions",
                 }
             )
+            logger.debug("Port %s has no sessions", port)
             continue
         short = [d for d in durs if d < short_threshold]
         if short:
@@ -103,4 +115,6 @@ def analyze_recent(conn: sqlite3.Connection, days: int = 7, short_threshold: int
                     "reason": f"short sessions: {len(short)}",
                 }
             )
+            logger.debug("Port %s has %d short sessions", port, len(short))
+    logger.debug("Identified %d problematic ports", len(problematic))
     return problematic

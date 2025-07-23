@@ -1,7 +1,10 @@
 import json
+import logging
 from pathlib import Path
 from typing import Any, Dict, List
 import requests
+
+logger = logging.getLogger(__name__)
 
 # Public download endpoint for the Endolla dataset
 ENDOLLA_URL = (
@@ -14,10 +17,15 @@ ENDOLLA_URL = (
 def fetch_data(path: Path | None = None) -> Dict[str, Any]:
     """Fetch dataset either from local file or remote endpoint."""
     if path:
+        logger.debug("Loading dataset from %s", path)
         with path.open() as f:
-            return json.load(f)
+            data = json.load(f)
+        logger.debug("Loaded %d bytes from file", len(json.dumps(data)))
+        return data
+    logger.debug("Fetching dataset from %s", ENDOLLA_URL)
     resp = requests.get(ENDOLLA_URL, timeout=30)
     resp.raise_for_status()
+    logger.debug("Fetched %d bytes from remote", len(resp.content))
     return resp.json()
 
 
@@ -38,4 +46,5 @@ def parse_usage(data: Dict[str, Any]) -> List[Dict[str, Any]]:
                 if "sessions" in port:
                     item["sessions"] = port["sessions"]
                 results.append(item)
+    logger.debug("Parsed %d port records", len(results))
     return results
