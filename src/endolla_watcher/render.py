@@ -7,8 +7,8 @@ HTML_TEMPLATE = """
     <meta charset='UTF-8'>
     <title>Endolla Watcher</title>
     <style>
-        table {border-collapse: collapse;}
-        th, td {border: 1px solid #ccc; padding: 4px;}
+        table {{border-collapse: collapse;}}
+        th, td {{border: 1px solid #ccc; padding: 4px;}}
     </style>
 </head>
 <body>

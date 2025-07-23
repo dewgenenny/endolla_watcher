@@ -11,6 +11,7 @@ python -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 python -m endolla_watcher.main --file endolla.json --output site/index.html
+python -m endolla_watcher.loop --interval 300
 ```
 
 The site can then be served from the `site/` directory.
