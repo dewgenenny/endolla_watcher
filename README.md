@@ -10,6 +10,7 @@ as a GitHub Pages site.
 python -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
+pip install -e .
 python -m endolla_watcher.main --file endolla.json --output site/index.html
 python -m endolla_watcher.loop --interval 300
 ```
