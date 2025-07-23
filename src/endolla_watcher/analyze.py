@@ -40,6 +40,10 @@ def analyze(records: List[Dict[str, any]]) -> List[Dict[str, any]]:
                     logger.debug(
                         "Port %s inactive since %s", r.get("port_id"), last_time
                     )
+                    continue
+
+        if "reason" not in r:
+            logger.debug("Port %s is healthy", r.get("port_id"))
         
     logger.debug("Identified %d problematic ports", len(problematic))
     return problematic
