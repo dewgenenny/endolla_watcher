@@ -25,7 +25,9 @@ The site can then be served from the `site/` directory.
 docker build -t endolla-watcher .
 docker run -v $(pwd)/endolla.json:/data/endolla.json \
            -v $(pwd)/endolla.db:/data/endolla.db \
-           endolla-watcher
+           -v $(pwd)/site:/data/site \
+           endolla-watcher \
+           --fetch-interval 300 --update-interval 3600
 ```
 
 ## Automation
