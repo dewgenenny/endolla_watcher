@@ -3,7 +3,6 @@ import time
 import logging
 from pathlib import Path
 from .data import fetch_data, parse_usage
-from .analyze import analyze
 from .render import render
 from . import storage
 from .rules import Rules
@@ -12,23 +11,23 @@ from .logging_utils import setup_logging
 logger = logging.getLogger(__name__)
 
 
-def run_once(
-    output: Path,
-    file: Path | None = None,
-    db: Path | None = None,
-    rules: Rules | None = None,
-) -> None:
-    logger.debug("Running update with file=%s db=%s", file, db)
+def fetch_once(db: Path, file: Path | None = None) -> None:
+    """Fetch the dataset and store a snapshot in the database."""
+    logger.debug("Fetching data with file=%s db=%s", file, db)
     data = fetch_data(file)
     records = parse_usage(data)
     logger.debug("Fetched %d records", len(records))
-    if db:
-        conn = storage.connect(db)
-        storage.save_snapshot(conn, records)
-        problematic = storage.analyze_chargers(conn, rules)
-        conn.close()
-    else:
-        problematic = analyze(records)
+    conn = storage.connect(db)
+    storage.save_snapshot(conn, records)
+    conn.close()
+
+
+def update_once(output: Path, db: Path, rules: Rules | None = None) -> None:
+    """Generate the HTML report from stored snapshots."""
+    logger.debug("Updating report from db=%s", db)
+    conn = storage.connect(db)
+    problematic = storage.analyze_chargers(conn, rules)
+    conn.close()
     html = render(problematic)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(html, encoding="utf-8")
@@ -41,10 +40,16 @@ def main() -> None:
     parser.add_argument("--output", type=Path, default=Path("site/index.html"))
     parser.add_argument("--db", type=Path, default=Path("endolla.db"))
     parser.add_argument(
-        "--interval",
+        "--fetch-interval",
         type=int,
-        default=300,
-        help="Seconds between updates",
+        default=60,
+        help="Seconds between data fetches",
+    )
+    parser.add_argument(
+        "--update-interval",
+        type=int,
+        default=3600,
+        help="Seconds between report updates",
     )
     parser.add_argument("--unused-days", type=int, default=4)
     parser.add_argument("--long-session-days", type=int, default=2)
@@ -66,11 +71,24 @@ def main() -> None:
         unavailable_hours=args.unavailable_hours,
     )
 
+    next_fetch = time.monotonic()
+    next_update = time.monotonic()
+
     while True:
-        logger.info("Starting update cycle")
-        run_once(args.output, args.file, args.db, rules)
-        logger.info("Sleeping for %s seconds", args.interval)
-        time.sleep(args.interval)
+        now = time.monotonic()
+        if now >= next_fetch:
+            logger.info("Fetching data")
+            fetch_once(args.db, args.file)
+            next_fetch = now + args.fetch_interval
+
+        if now >= next_update:
+            logger.info("Updating report")
+            update_once(args.output, args.db, rules)
+            next_update = now + args.update_interval
+
+        sleep_for = min(next_fetch, next_update) - now
+        if sleep_for > 0:
+            time.sleep(sleep_for)
 
 
 if __name__ == "__main__":
