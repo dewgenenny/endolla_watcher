@@ -13,7 +13,7 @@ This project monitors the Barcelona Endolla open data to find underused or out-o
 ## Notes for future agents
 - Prefer Python for scraping and analysis.
 - Keep dependencies minimal and list them in `requirements.txt`.
-- Docker support is expected for local development.
+- Docker support is expected for local development and CI.
 
 ## TODO
 _None_
