@@ -30,10 +30,17 @@ docker run -v $(pwd)/endolla.json:/data/endolla.json \
            --fetch-interval 300 --update-interval 3600
 ```
 
+The image contains `git` and the `push_site.py` helper so updates can be
+published directly from within the container.
+
 ## Automation
 
 GitHub Actions (`.github/workflows/update.yml`) periodically runs the watcher
 and deploys the generated HTML to the `gh-pages` branch.
+
+A second workflow (`.github/workflows/docker.yml`) builds the Docker image and
+pushes it to Docker Hub. Configure the `DOCKERHUB_USERNAME` and
+`DOCKERHUB_TOKEN` secrets for authentication.
 
 For local deployments, the `scripts/push_site.py` helper commits the contents of
 the `site/` directory to the `gh-pages` branch and pushes the update. It can be
