@@ -17,15 +17,7 @@ RUN chmod +x /usr/local/bin/push_site.py && \
 # Always write the dataset and generated site under /data so volumes can
 # persist them. Additional arguments provided to `docker run` will be appended
 # allowing the defaults here to be overridden if needed.
-ENTRYPOINT [
-    "python", "-m", "endolla_watcher.loop",
-    "--file", "/data/endolla.json",
-    "--output", "/data/site/index.html",
-    "--db", "/data/endolla.db"
-]
+ENTRYPOINT ["python", "-m", "endolla_watcher.loop", "--file", "/data/endolla.json", "--output", "/data/site/index.html", "--db", "/data/endolla.db"]
 # Default intervals can be replaced by passing arguments when running the
 # container.
-CMD [
-    "--fetch-interval", "300",
-    "--update-interval", "3600"
-]
+CMD ["--fetch-interval", "300", "--update-interval", "3600"]
