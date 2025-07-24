@@ -80,6 +80,15 @@ def parse_locations(data: Any) -> Dict[str, Dict[str, float]]:
             or it.get("LONGITUD")
             or it.get("longitud")
         )
+        if lat is None or lon is None:
+            coords = it.get("coordinates") or {}
+            lat = lat or coords.get("latitude") or coords.get("lat")
+            lon = lon or coords.get("longitude") or coords.get("lon")
+        if lat is None or lon is None:
+            address = it.get("address") or {}
+            coords = address.get("coordinates") or {}
+            lat = lat or coords.get("latitude") or coords.get("lat")
+            lon = lon or coords.get("longitude") or coords.get("lon")
         if loc_id is None or lat is None or lon is None:
             continue
         try:
