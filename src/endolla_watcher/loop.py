@@ -2,6 +2,7 @@ import argparse
 import os
 import subprocess
 import time
+from datetime import datetime
 import logging
 from pathlib import Path
 from .data import fetch_data, parse_usage
@@ -27,12 +28,21 @@ def fetch_once(db: Path, file: Path | None = None) -> None:
 def update_once(output: Path, db: Path, rules: Rules | None = None) -> None:
     """Generate the HTML report from stored snapshots."""
     logger.debug("Updating report from db=%s", db)
+    start = time.monotonic()
     conn = storage.connect(db)
     problematic = storage.analyze_chargers(conn, rules)
     stats = storage.stats_from_db(conn)
     history = storage.timeline_stats(conn)
     conn.close()
-    html = render(problematic, stats, history)
+    db_size = db.stat().st_size / (1024 * 1024)
+    html = render(
+        problematic,
+        stats,
+        history,
+        updated=datetime.now().astimezone().isoformat(timespec="seconds"),
+        db_size=db_size,
+        elapsed=time.monotonic() - start,
+    )
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(html, encoding="utf-8")
     about_path = output.parent / "about.html"

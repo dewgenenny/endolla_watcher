@@ -1,5 +1,7 @@
 import argparse
 import logging
+import time
+from datetime import datetime
 from pathlib import Path
 
 from .data import fetch_data, parse_usage
@@ -24,13 +26,19 @@ def main() -> None:
 
     setup_logging(args.debug)
 
+    start = time.monotonic()
     logger.info("Reading data")
     data = fetch_data(args.file)
     records = parse_usage(data)
     problematic = analyze(records)
     stats = from_records(records)
 
-    html = render(problematic, stats)
+    html = render(
+        problematic,
+        stats,
+        updated=datetime.now().astimezone().isoformat(timespec="seconds"),
+        elapsed=time.monotonic() - start,
+    )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(html, encoding="utf-8")
     # Write the about page alongside the main report
