@@ -5,6 +5,7 @@ from pathlib import Path
 from .data import fetch_data, parse_usage
 from .analyze import analyze
 from .render import render
+from .stats import from_records
 from .logging_utils import setup_logging
 
 logger = logging.getLogger(__name__)
@@ -27,8 +28,9 @@ def main() -> None:
     data = fetch_data(args.file)
     records = parse_usage(data)
     problematic = analyze(records)
+    stats = from_records(records)
 
-    html = render(problematic)
+    html = render(problematic, stats)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(html, encoding="utf-8")
     logger.info("Wrote report to %s", args.output)
