@@ -4,7 +4,7 @@ from pathlib import Path
 
 from .data import fetch_data, parse_usage
 from .analyze import analyze
-from .render import render
+from .render import render, render_about
 from .stats import from_records
 from .logging_utils import setup_logging
 
@@ -33,6 +33,9 @@ def main() -> None:
     html = render(problematic, stats)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(html, encoding="utf-8")
+    # Write the about page alongside the main report
+    about_path = args.output.parent / "about.html"
+    about_path.write_text(render_about(), encoding="utf-8")
     logger.info("Wrote report to %s", args.output)
 
 
