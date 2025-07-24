@@ -324,19 +324,33 @@ def timeline_stats(conn: sqlite3.Connection) -> List[Dict[str, Any]]:
     """Return aggregated statistics per day for the past week."""
     placeholders = ",".join("?" for _ in UNAVAILABLE_STATUSES)
     since = datetime.now().astimezone() - timedelta(days=7)
-    params = tuple(UNAVAILABLE_STATUSES) + (since.isoformat(),)
     cur = conn.execute(
         f"""
-        SELECT date(ts) AS day,
+        WITH latest AS (
+            SELECT ps.location_id, ps.station_id, ps.port_id,
+                   date(ps.ts) AS day, ps.status
+            FROM port_status ps
+            JOIN (
+                SELECT location_id, station_id, port_id, date(ts) AS day, MAX(ts) AS max_ts
+                FROM port_status
+                WHERE ts >= ?
+                GROUP BY location_id, station_id, port_id, day
+            ) l
+            ON ps.location_id = l.location_id
+            AND ps.station_id = l.station_id
+            AND ps.port_id = l.port_id
+            AND date(ps.ts) = l.day
+            AND ps.ts = l.max_ts
+        )
+        SELECT day,
                COUNT(*) AS chargers,
                SUM(CASE WHEN status IN ({placeholders}) THEN 1 ELSE 0 END) AS unavailable,
                SUM(CASE WHEN status = 'IN_USE' THEN 1 ELSE 0 END) AS charging
-        FROM port_status
-        WHERE ts >= ?
+        FROM latest
         GROUP BY day
         ORDER BY day
         """,
-        params,
+        (since.isoformat(), *UNAVAILABLE_STATUSES),
     )
     result = [
         {
