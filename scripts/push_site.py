@@ -35,7 +35,12 @@ def main() -> None:
         repo_url = repo_url.replace('https://', f'https://{token}@')
 
     run('git', 'clone', repo_url, str(tmpdir))
-    run('git', 'checkout', '-B', args.branch, cwd=tmpdir)
+    fetch = subprocess.run(['git', 'fetch', args.remote, args.branch], cwd=tmpdir)
+    if fetch.returncode == 0:
+        run('git', 'checkout', '-B', args.branch, f'{args.remote}/{args.branch}',
+            cwd=tmpdir)
+    else:
+        run('git', 'checkout', '--orphan', args.branch, cwd=tmpdir)
     if os.environ.get('GH_NAME'):
         run('git', 'config', 'user.name', os.environ['GH_NAME'], cwd=tmpdir)
     if os.environ.get('GH_EMAIL'):
