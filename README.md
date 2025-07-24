@@ -35,6 +35,11 @@ docker run -v $(pwd)/endolla.json:/data/endolla.json \
            --push-site
 ```
 
+The entrypoint already sets the `--file`, `--output` and `--db` options to use
+`/data` inside the container. Any arguments provided when running the image are
+appended to those defaults, so you only need to specify the options you wish to
+change, such as the fetch interval or `--push-site`.
+
 The image contains `git` and the `push_site.py` helper so updates can be
 published directly from within the container. Provide the GitHub token and
 repository URL as shown above to enable automatic pushes.
