@@ -39,6 +39,7 @@ INDEX_TEMPLATE = """
     <li class="list-group-item">Unavailable chargers: {unavailable}</li>
     <li class="list-group-item">Currently charging: {charging}</li>
     <li class="list-group-item">Total charging events: {sessions}</li>
+    <li class="list-group-item">Avg session (24h): {avg_session_min:.1f} min</li>
 </ul>
 <div class="mb-4">
     <canvas id="historyChart" height="80"></canvas>
@@ -85,13 +86,13 @@ ABOUT_TEMPLATE = """
 
 def render(
     problematic: List[Dict[str, Any]],
-    stats: Dict[str, int] | None = None,
+    stats: Dict[str, float] | None = None,
     history: List[Dict[str, Any]] | None = None,
 ) -> str:
     """Return the HTML for the main report page."""
     logger.debug("Rendering %d problematic ports", len(problematic))
     if stats is None:
-        stats = {"chargers": 0, "unavailable": 0, "charging": 0, "sessions": 0}
+        stats = {"chargers": 0, "unavailable": 0, "charging": 0, "sessions": 0, "avg_session_min": 0.0}
     history_js = ""
     if history:
         history_js = (

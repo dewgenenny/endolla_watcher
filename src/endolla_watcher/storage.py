@@ -108,6 +108,25 @@ def _session_durations(statuses: List[Tuple[datetime, str]]) -> List[float]:
     return sessions
 
 
+def _session_records(
+    statuses: List[Tuple[datetime, str]]
+) -> List[Tuple[datetime, datetime, float]]:
+    """Return session start/end and duration in minutes."""
+    sessions: List[Tuple[datetime, datetime, float]] = []
+    start: datetime | None = None
+    for ts, status in statuses:
+        if status == "IN_USE":
+            if start is None:
+                start = ts
+        else:
+            if start is not None:
+                dur = (ts - start).total_seconds() / 60
+                sessions.append((start, ts, dur))
+                start = None
+    logger.debug("Computed %d session records", len(sessions))
+    return sessions
+
+
 def _recent_status_history(
     conn: sqlite3.Connection, since: datetime
 ) -> Dict[PortKey, List[Tuple[datetime, str]]]:
@@ -311,12 +330,20 @@ def _all_history(conn: sqlite3.Connection) -> Dict[PortKey, List[Tuple[datetime,
     return history
 
 
-def stats_from_db(conn: sqlite3.Connection) -> Dict[str, int]:
+def stats_from_db(conn: sqlite3.Connection) -> Dict[str, float]:
     """Compute statistics based on data stored in the database."""
     latest = _latest_records(conn)
     stats = stats_mod.from_records(latest)
     history = _all_history(conn)
     stats["sessions"] = sum(len(_session_durations(v)) for v in history.values())
+
+    since = datetime.now().astimezone() - timedelta(hours=24)
+    durations: List[float] = []
+    for events in history.values():
+        for start, end, dur in _session_records(events):
+            if start >= since:
+                durations.append(dur)
+    stats["avg_session_min"] = sum(durations) / len(durations) if durations else 0.0
     return stats
 
 
