@@ -30,8 +30,9 @@ def update_once(output: Path, db: Path, rules: Rules | None = None) -> None:
     conn = storage.connect(db)
     problematic = storage.analyze_chargers(conn, rules)
     stats = storage.stats_from_db(conn)
+    history = storage.timeline_stats(conn)
     conn.close()
-    html = render(problematic, stats)
+    html = render(problematic, stats, history)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(html, encoding="utf-8")
     about_path = output.parent / "about.html"
