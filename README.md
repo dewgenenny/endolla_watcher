@@ -20,6 +20,18 @@ python -m endolla_watcher.loop --fetch-interval 60 --update-interval 3600 \
 The site can then be served from the `site/` directory. It now features a small
 Bootstrap-based theme and an `about.html` page with project details.
 
+## Database
+
+Snapshots are stored in a SQLite database. Old records are automatically
+pruned so the database only keeps the last four weeks of history. The
+application checks the schema version when it opens the database and applies
+any pending migrations automatically. If you prefer to upgrade a database
+manually you can run:
+
+```
+python -m endolla_watcher.migrate --db endolla.db
+```
+
 ## Docker
 
 ```

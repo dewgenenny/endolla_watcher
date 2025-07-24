@@ -20,16 +20,50 @@ CREATE TABLE IF NOT EXISTS port_status (
 CREATE INDEX IF NOT EXISTS idx_port_ts ON port_status(location_id, station_id, port_id, ts);
 """
 
+# Current schema version for migrations
+CURRENT_SCHEMA_VERSION = 1
+
+MIGRATIONS = {
+    1: SCHEMA,
+}
+
+# Delete records older than this many days
+MAX_DATA_AGE_DAYS = 28
+
 UNAVAILABLE_STATUSES = {"OUT_OF_ORDER", "UNAVAILABLE"}
 
 PortKey = Tuple[str | None, str | None, str | None]
 
 
+def _apply_migrations(conn: sqlite3.Connection) -> None:
+    """Apply pending schema migrations to the database."""
+    cur = conn.execute("PRAGMA user_version")
+    version = cur.fetchone()[0]
+    logger.debug("Current schema version: %d", version)
+    for v in range(version + 1, CURRENT_SCHEMA_VERSION + 1):
+        script = MIGRATIONS.get(v)
+        if script:
+            logger.info("Applying migration %d", v)
+            conn.executescript(script)
+            conn.execute(f"PRAGMA user_version = {v}")
+            conn.commit()
+    logger.debug("Migrations complete")
+
+
+def prune_old_data(conn: sqlite3.Connection, max_age_days: int = MAX_DATA_AGE_DAYS) -> None:
+    """Remove data older than the configured retention window."""
+    cutoff = datetime.now().astimezone() - timedelta(days=max_age_days)
+    logger.debug("Pruning data older than %s", cutoff)
+    conn.execute("DELETE FROM port_status WHERE ts < ?", (cutoff.isoformat(),))
+    conn.commit()
+
+
 def connect(path: Path) -> sqlite3.Connection:
-    """Open connection and ensure schema exists."""
+    """Open connection and ensure schema and retention policy."""
     logger.debug("Connecting to database %s", path)
     conn = sqlite3.connect(path)
-    conn.executescript(SCHEMA)
+    _apply_migrations(conn)
+    prune_old_data(conn)
     return conn
 
 
@@ -54,6 +88,7 @@ def save_snapshot(conn: sqlite3.Connection, records: Iterable[Dict[str, Any]], t
         rows,
     )
     conn.commit()
+    prune_old_data(conn)
     logger.debug("Saved snapshot with %d rows", len(rows))
 
 
