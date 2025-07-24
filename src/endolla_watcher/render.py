@@ -124,6 +124,7 @@ def render(
     updated: str | None = None,
     db_size: float | None = None,
     elapsed: float | None = None,
+    locations: Dict[str, Dict[str, float]] | None = None,
 ) -> str:
     """Return the HTML for the main report page."""
     logger.debug("Rendering %d problematic ports", len(problematic))
@@ -158,8 +159,14 @@ def render(
         loc = r.get("location_id") or ""
         sta = r.get("station_id") or ""
         url = f"charger_{loc}_{sta}.html"
+        latlon = locations.get(loc) if locations else None
+        if latlon:
+            map_url = f"https://www.google.com/maps?q={latlon['lat']},{latlon['lon']}"
+            loc_cell = f"<td><a href='{map_url}' target='_blank'>{loc}</a></td>"
+        else:
+            loc_cell = f"<td>{loc}</td>"
         cells = [
-            f"<td><a href='{url}'>{loc}</a></td>",
+            loc_cell,
             f"<td><a href='{url}'>{sta}</a></td>",
             f"<td>{r.get('port_id','')}</td>",
             f"<td>{r.get('status','')}</td>",
