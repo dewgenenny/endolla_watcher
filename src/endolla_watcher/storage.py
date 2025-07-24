@@ -321,45 +321,48 @@ def stats_from_db(conn: sqlite3.Connection) -> Dict[str, int]:
 
 
 def timeline_stats(conn: sqlite3.Connection) -> List[Dict[str, Any]]:
-    """Return aggregated statistics per day for the past week."""
+    """Return aggregated statistics every 15 minutes for the past week."""
     placeholders = ",".join("?" for _ in UNAVAILABLE_STATUSES)
     since = datetime.now().astimezone() - timedelta(days=7)
     cur = conn.execute(
         f"""
         WITH latest AS (
             SELECT ps.location_id, ps.station_id, ps.port_id,
-                   date(ps.ts) AS day, ps.status
+                   datetime((CAST(strftime('%s', ps.ts) AS integer) / 900) * 900, 'unixepoch') AS slot,
+                   ps.status
             FROM port_status ps
             JOIN (
-                SELECT location_id, station_id, port_id, date(ts) AS day, MAX(ts) AS max_ts
+                SELECT location_id, station_id, port_id,
+                       datetime((CAST(strftime('%s', ts) AS integer) / 900) * 900, 'unixepoch') AS slot,
+                       MAX(ts) AS max_ts
                 FROM port_status
                 WHERE ts >= ?
-                GROUP BY location_id, station_id, port_id, day
+                GROUP BY location_id, station_id, port_id, slot
             ) l
             ON ps.location_id = l.location_id
             AND ps.station_id = l.station_id
             AND ps.port_id = l.port_id
-            AND date(ps.ts) = l.day
+            AND datetime((CAST(strftime('%s', ps.ts) AS integer) / 900) * 900, 'unixepoch') = l.slot
             AND ps.ts = l.max_ts
         )
-        SELECT day,
+        SELECT slot,
                COUNT(*) AS chargers,
                SUM(CASE WHEN status IN ({placeholders}) THEN 1 ELSE 0 END) AS unavailable,
                SUM(CASE WHEN status = 'IN_USE' THEN 1 ELSE 0 END) AS charging
         FROM latest
-        GROUP BY day
-        ORDER BY day
+        GROUP BY slot
+        ORDER BY slot
         """,
         (since.isoformat(), *UNAVAILABLE_STATUSES),
     )
     result = [
         {
-            "ts": day,
+            "ts": slot,
             "chargers": chargers,
             "unavailable": unavailable,
             "charging": charging,
         }
-        for day, chargers, unavailable, charging in cur
+        for slot, chargers, unavailable, charging in cur
     ]
     logger.debug("Loaded timeline with %d points", len(result))
     return result

@@ -49,9 +49,10 @@ def test_timeline_stats():
     )
 
     result = storage.timeline_stats(conn)
-    assert len(result) >= 2
-    first = result[-2]
-    second = result[-1]
+    assert len(result) == 4
+
+    first = result[1]
+    second = result[3]
 
     assert first["chargers"] == 2
     assert first["charging"] == 1
