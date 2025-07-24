@@ -321,28 +321,31 @@ def stats_from_db(conn: sqlite3.Connection) -> Dict[str, int]:
 
 
 def timeline_stats(conn: sqlite3.Connection) -> List[Dict[str, Any]]:
-    """Return aggregated statistics for each stored snapshot."""
+    """Return aggregated statistics per day for the past week."""
     placeholders = ",".join("?" for _ in UNAVAILABLE_STATUSES)
+    since = datetime.now().astimezone() - timedelta(days=7)
+    params = tuple(UNAVAILABLE_STATUSES) + (since.isoformat(),)
     cur = conn.execute(
         f"""
-        SELECT ts,
+        SELECT date(ts) AS day,
                COUNT(*) AS chargers,
                SUM(CASE WHEN status IN ({placeholders}) THEN 1 ELSE 0 END) AS unavailable,
                SUM(CASE WHEN status = 'IN_USE' THEN 1 ELSE 0 END) AS charging
         FROM port_status
-        GROUP BY ts
-        ORDER BY ts
+        WHERE ts >= ?
+        GROUP BY day
+        ORDER BY day
         """,
-        tuple(UNAVAILABLE_STATUSES),
+        params,
     )
     result = [
         {
-            "ts": ts,
+            "ts": day,
             "chargers": chargers,
             "unavailable": unavailable,
             "charging": charging,
         }
-        for ts, chargers, unavailable, charging in cur
+        for day, chargers, unavailable, charging in cur
     ]
     logger.debug("Loaded timeline with %d points", len(result))
     return result

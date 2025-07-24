@@ -97,7 +97,7 @@ def render(
             "const historyData = "
             + json.dumps(history)
             + ";\n"
-            + "const labels = historyData.map(d => new Date(d.ts).toLocaleString());\n"
+            + "const labels = historyData.map(d => new Date(d.ts).toLocaleDateString());\n"
             + "const ctx = document.getElementById('historyChart').getContext('2d');\n"
             + "new Chart(ctx, {type: 'line', data: {labels, datasets: ["
             + "{label: 'Unavailable', data: historyData.map(d => d.unavailable),"
