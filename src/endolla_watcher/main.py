@@ -4,7 +4,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from .data import fetch_data, parse_usage
+from .data import fetch_data, fetch_locations, parse_usage
 from .analyze import analyze
 from .render import render, render_about
 from .stats import from_records
@@ -16,6 +16,11 @@ logger = logging.getLogger(__name__)
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--file", type=Path, help="Local JSON file to parse")
+    parser.add_argument(
+        "--locations",
+        type=Path,
+        help="Local JSON file with charger locations (default: fetch online)",
+    )
     parser.add_argument("--output", type=Path, default=Path("site/index.html"))
     parser.add_argument(
         "--debug",
@@ -30,6 +35,7 @@ def main() -> None:
     logger.info("Reading data")
     data = fetch_data(args.file)
     records = parse_usage(data)
+    locations = fetch_locations(args.locations)
     problematic = analyze(records)
     stats = from_records(records)
 
@@ -38,6 +44,7 @@ def main() -> None:
         stats,
         updated=datetime.now().astimezone().isoformat(timespec="seconds"),
         elapsed=time.monotonic() - start,
+        locations=locations,
     )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(html, encoding="utf-8")

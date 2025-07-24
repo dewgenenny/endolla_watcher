@@ -5,7 +5,8 @@ import time
 from datetime import datetime
 import logging
 from pathlib import Path
-from .data import fetch_data, parse_usage
+from typing import Dict
+from .data import fetch_data, fetch_locations, parse_usage
 from .render import render, render_about, render_charger
 from . import storage
 from .rules import Rules
@@ -25,7 +26,12 @@ def fetch_once(db: Path, file: Path | None = None) -> None:
     conn.close()
 
 
-def update_once(output: Path, db: Path, rules: Rules | None = None) -> None:
+def update_once(
+    output: Path,
+    db: Path,
+    rules: Rules | None = None,
+    locations: Dict[str, Dict[str, float]] | None = None,
+) -> None:
     """Generate the HTML report from stored snapshots."""
     logger.debug("Updating report from db=%s", db)
     start = time.monotonic()
@@ -41,6 +47,7 @@ def update_once(output: Path, db: Path, rules: Rules | None = None) -> None:
         updated=datetime.now().astimezone().isoformat(timespec="seconds"),
         db_size=db_size,
         elapsed=time.monotonic() - start,
+        locations=locations,
     )
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(html, encoding="utf-8")
@@ -68,6 +75,11 @@ def main() -> None:
     parser.add_argument("--file", type=Path)
     parser.add_argument("--output", type=Path, default=Path("site/index.html"))
     parser.add_argument("--db", type=Path, default=Path("endolla.db"))
+    parser.add_argument(
+        "--locations",
+        type=Path,
+        help="Local JSON file with charger locations (default: fetch online)",
+    )
     parser.add_argument(
         "--fetch-interval",
         type=int,
@@ -113,6 +125,8 @@ def main() -> None:
 
     setup_logging(args.debug)
 
+    locations = fetch_locations(args.locations)
+
     rules = Rules(
         unused_days=args.unused_days,
         long_session_days=args.long_session_days,
@@ -137,7 +151,7 @@ def main() -> None:
 
         if now >= next_update:
             logger.info("Updating report")
-            update_once(args.output, args.db, rules)
+            update_once(args.output, args.db, rules, locations)
             if args.push_site:
                 cmd = [
                     "push_site.py",
