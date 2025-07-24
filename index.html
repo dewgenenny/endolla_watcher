@@ -25,17 +25,17 @@
 <h1 class="mb-4">Network Overview</h1>
 <ul class="list-group mb-4">
     <li class="list-group-item">Total chargers: 1398</li>
-    <li class="list-group-item">Unavailable chargers: 139</li>
-    <li class="list-group-item">Currently charging: 187</li>
-    <li class="list-group-item">Total charging events: 670</li>
+    <li class="list-group-item">Unavailable chargers: 132</li>
+    <li class="list-group-item">Currently charging: 176</li>
+    <li class="list-group-item">Total charging events: 697</li>
     <li class="list-group-item">Short sessions (<5 min): 11</li>
-    <li class="list-group-item">Avg session (24h): 183.4 min</li>
+    <li class="list-group-item">Avg session (24h): 143.3 min</li>
 </ul>
 <div class="mb-4">
     <canvas id="historyChart" height="80"></canvas>
 </div>
 <script>
-const historyData = [{"ts": "2025-07-23 14:15:00", "chargers": 1398, "unavailable": 156, "charging": 173}, {"ts": "2025-07-23 14:30:00", "chargers": 1398, "unavailable": 156, "charging": 174}, {"ts": "2025-07-23 14:45:00", "chargers": 1398, "unavailable": 157, "charging": 179}, {"ts": "2025-07-23 16:00:00", "chargers": 1398, "unavailable": 164, "charging": 181}, {"ts": "2025-07-23 16:15:00", "chargers": 1398, "unavailable": 163, "charging": 188}, {"ts": "2025-07-23 16:30:00", "chargers": 1398, "unavailable": 146, "charging": 196}, {"ts": "2025-07-23 16:45:00", "chargers": 1398, "unavailable": 144, "charging": 196}, {"ts": "2025-07-23 17:00:00", "chargers": 1398, "unavailable": 165, "charging": 196}, {"ts": "2025-07-23 17:45:00", "chargers": 1398, "unavailable": 151, "charging": 189}, {"ts": "2025-07-23 18:00:00", "chargers": 1398, "unavailable": 150, "charging": 194}, {"ts": "2025-07-24 07:30:00", "chargers": 1398, "unavailable": 125, "charging": 197}, {"ts": "2025-07-24 07:45:00", "chargers": 1398, "unavailable": 125, "charging": 197}, {"ts": "2025-07-24 08:00:00", "chargers": 1398, "unavailable": 125, "charging": 197}, {"ts": "2025-07-24 08:15:00", "chargers": 1398, "unavailable": 125, "charging": 197}, {"ts": "2025-07-24 08:30:00", "chargers": 1398, "unavailable": 125, "charging": 197}, {"ts": "2025-07-24 08:45:00", "chargers": 1398, "unavailable": 125, "charging": 197}, {"ts": "2025-07-24 09:00:00", "chargers": 1398, "unavailable": 125, "charging": 197}, {"ts": "2025-07-24 09:15:00", "chargers": 1398, "unavailable": 125, "charging": 197}, {"ts": "2025-07-24 09:30:00", "chargers": 1398, "unavailable": 122, "charging": 205}, {"ts": "2025-07-24 09:45:00", "chargers": 1398, "unavailable": 124, "charging": 208}, {"ts": "2025-07-24 10:00:00", "chargers": 1398, "unavailable": 125, "charging": 202}, {"ts": "2025-07-24 10:15:00", "chargers": 1398, "unavailable": 121, "charging": 205}, {"ts": "2025-07-24 10:30:00", "chargers": 1398, "unavailable": 124, "charging": 202}, {"ts": "2025-07-24 10:45:00", "chargers": 1398, "unavailable": 126, "charging": 206}, {"ts": "2025-07-24 11:00:00", "chargers": 1398, "unavailable": 126, "charging": 206}, {"ts": "2025-07-24 11:15:00", "chargers": 1398, "unavailable": 126, "charging": 206}, {"ts": "2025-07-24 11:30:00", "chargers": 1398, "unavailable": 129, "charging": 205}, {"ts": "2025-07-24 11:45:00", "chargers": 1398, "unavailable": 124, "charging": 194}, {"ts": "2025-07-24 12:00:00", "chargers": 1398, "unavailable": 123, "charging": 192}, {"ts": "2025-07-24 12:15:00", "chargers": 1398, "unavailable": 123, "charging": 195}, {"ts": "2025-07-24 12:30:00", "chargers": 1398, "unavailable": 123, "charging": 188}, {"ts": "2025-07-24 12:45:00", "chargers": 1398, "unavailable": 123, "charging": 185}, {"ts": "2025-07-24 13:00:00", "chargers": 1398, "unavailable": 125, "charging": 184}, {"ts": "2025-07-24 13:15:00", "chargers": 1398, "unavailable": 126, "charging": 174}, {"ts": "2025-07-24 13:30:00", "chargers": 1398, "unavailable": 127, "charging": 171}, {"ts": "2025-07-24 13:45:00", "chargers": 1398, "unavailable": 121, "charging": 163}, {"ts": "2025-07-24 14:00:00", "chargers": 1398, "unavailable": 121, "charging": 171}, {"ts": "2025-07-24 14:15:00", "chargers": 1398, "unavailable": 128, "charging": 170}, {"ts": "2025-07-24 14:30:00", "chargers": 1398, "unavailable": 127, "charging": 169}, {"ts": "2025-07-24 14:45:00", "chargers": 1398, "unavailable": 127, "charging": 172}, {"ts": "2025-07-24 15:00:00", "chargers": 1398, "unavailable": 127, "charging": 171}, {"ts": "2025-07-24 15:15:00", "chargers": 1398, "unavailable": 127, "charging": 171}, {"ts": "2025-07-24 15:30:00", "chargers": 1398, "unavailable": 129, "charging": 174}, {"ts": "2025-07-24 15:45:00", "chargers": 1398, "unavailable": 125, "charging": 174}, {"ts": "2025-07-24 16:00:00", "chargers": 1398, "unavailable": 132, "charging": 180}, {"ts": "2025-07-24 16:15:00", "chargers": 1398, "unavailable": 132, "charging": 180}, {"ts": "2025-07-24 16:30:00", "chargers": 1398, "unavailable": 133, "charging": 179}, {"ts": "2025-07-24 16:45:00", "chargers": 1398, "unavailable": 138, "charging": 186}, {"ts": "2025-07-24 17:00:00", "chargers": 1398, "unavailable": 136, "charging": 188}, {"ts": "2025-07-24 17:15:00", "chargers": 1398, "unavailable": 139, "charging": 187}];
+const historyData = [{"ts": "2025-07-23 14:15:00", "chargers": 1398, "unavailable": 156, "charging": 173}, {"ts": "2025-07-23 14:30:00", "chargers": 1398, "unavailable": 156, "charging": 174}, {"ts": "2025-07-23 14:45:00", "chargers": 1398, "unavailable": 157, "charging": 179}, {"ts": "2025-07-23 16:00:00", "chargers": 1398, "unavailable": 164, "charging": 181}, {"ts": "2025-07-23 16:15:00", "chargers": 1398, "unavailable": 163, "charging": 188}, {"ts": "2025-07-23 16:30:00", "chargers": 1398, "unavailable": 146, "charging": 196}, {"ts": "2025-07-23 16:45:00", "chargers": 1398, "unavailable": 144, "charging": 196}, {"ts": "2025-07-23 17:00:00", "chargers": 1398, "unavailable": 165, "charging": 196}, {"ts": "2025-07-23 17:45:00", "chargers": 1398, "unavailable": 151, "charging": 189}, {"ts": "2025-07-23 18:00:00", "chargers": 1398, "unavailable": 150, "charging": 194}, {"ts": "2025-07-24 07:30:00", "chargers": 1398, "unavailable": 125, "charging": 197}, {"ts": "2025-07-24 07:45:00", "chargers": 1398, "unavailable": 125, "charging": 197}, {"ts": "2025-07-24 08:00:00", "chargers": 1398, "unavailable": 125, "charging": 197}, {"ts": "2025-07-24 08:15:00", "chargers": 1398, "unavailable": 125, "charging": 197}, {"ts": "2025-07-24 08:30:00", "chargers": 1398, "unavailable": 125, "charging": 197}, {"ts": "2025-07-24 08:45:00", "chargers": 1398, "unavailable": 125, "charging": 197}, {"ts": "2025-07-24 09:00:00", "chargers": 1398, "unavailable": 125, "charging": 197}, {"ts": "2025-07-24 09:15:00", "chargers": 1398, "unavailable": 125, "charging": 197}, {"ts": "2025-07-24 09:30:00", "chargers": 1398, "unavailable": 122, "charging": 205}, {"ts": "2025-07-24 09:45:00", "chargers": 1398, "unavailable": 124, "charging": 208}, {"ts": "2025-07-24 10:00:00", "chargers": 1398, "unavailable": 125, "charging": 202}, {"ts": "2025-07-24 10:15:00", "chargers": 1398, "unavailable": 121, "charging": 205}, {"ts": "2025-07-24 10:30:00", "chargers": 1398, "unavailable": 124, "charging": 202}, {"ts": "2025-07-24 10:45:00", "chargers": 1398, "unavailable": 126, "charging": 206}, {"ts": "2025-07-24 11:00:00", "chargers": 1398, "unavailable": 126, "charging": 206}, {"ts": "2025-07-24 11:15:00", "chargers": 1398, "unavailable": 126, "charging": 206}, {"ts": "2025-07-24 11:30:00", "chargers": 1398, "unavailable": 129, "charging": 205}, {"ts": "2025-07-24 11:45:00", "chargers": 1398, "unavailable": 124, "charging": 194}, {"ts": "2025-07-24 12:00:00", "chargers": 1398, "unavailable": 123, "charging": 192}, {"ts": "2025-07-24 12:15:00", "chargers": 1398, "unavailable": 123, "charging": 195}, {"ts": "2025-07-24 12:30:00", "chargers": 1398, "unavailable": 123, "charging": 188}, {"ts": "2025-07-24 12:45:00", "chargers": 1398, "unavailable": 123, "charging": 185}, {"ts": "2025-07-24 13:00:00", "chargers": 1398, "unavailable": 125, "charging": 184}, {"ts": "2025-07-24 13:15:00", "chargers": 1398, "unavailable": 126, "charging": 174}, {"ts": "2025-07-24 13:30:00", "chargers": 1398, "unavailable": 127, "charging": 171}, {"ts": "2025-07-24 13:45:00", "chargers": 1398, "unavailable": 121, "charging": 163}, {"ts": "2025-07-24 14:00:00", "chargers": 1398, "unavailable": 121, "charging": 171}, {"ts": "2025-07-24 14:15:00", "chargers": 1398, "unavailable": 128, "charging": 170}, {"ts": "2025-07-24 14:30:00", "chargers": 1398, "unavailable": 127, "charging": 169}, {"ts": "2025-07-24 14:45:00", "chargers": 1398, "unavailable": 127, "charging": 172}, {"ts": "2025-07-24 15:00:00", "chargers": 1398, "unavailable": 127, "charging": 171}, {"ts": "2025-07-24 15:15:00", "chargers": 1398, "unavailable": 127, "charging": 171}, {"ts": "2025-07-24 15:30:00", "chargers": 1398, "unavailable": 129, "charging": 174}, {"ts": "2025-07-24 15:45:00", "chargers": 1398, "unavailable": 125, "charging": 174}, {"ts": "2025-07-24 16:00:00", "chargers": 1398, "unavailable": 132, "charging": 180}, {"ts": "2025-07-24 16:15:00", "chargers": 1398, "unavailable": 132, "charging": 180}, {"ts": "2025-07-24 16:30:00", "chargers": 1398, "unavailable": 133, "charging": 179}, {"ts": "2025-07-24 16:45:00", "chargers": 1398, "unavailable": 138, "charging": 186}, {"ts": "2025-07-24 17:00:00", "chargers": 1398, "unavailable": 136, "charging": 188}, {"ts": "2025-07-24 17:15:00", "chargers": 1398, "unavailable": 135, "charging": 182}, {"ts": "2025-07-24 17:30:00", "chargers": 1398, "unavailable": 135, "charging": 181}, {"ts": "2025-07-24 17:45:00", "chargers": 1398, "unavailable": 132, "charging": 176}];
 const labels = historyData.map(d => d.ts);
 const ctx = document.getElementById('historyChart').getContext('2d');
 new Chart(ctx, {type: 'line', data: {labels, datasets: [{label: 'Unavailable', data: historyData.map(d => d.unavailable),borderColor: '#dc3545', backgroundColor: 'rgba(220,53,69,0.3)', fill: true, stack: 'usage'},{label: 'Charging', data: historyData.map(d => d.charging),borderColor: '#198754', backgroundColor: 'rgba(25,135,84,0.3)', fill: true, stack: 'usage'},{label: 'Total', data: historyData.map(d => d.chargers),borderColor: '#0d6efd', backgroundColor: 'rgba(13,110,253,0.3)', fill: false}]},options: {scales: {x: {type: 'time', time: {unit: 'day'}}, y: {beginAtZero: true, stacked: true}}}});
@@ -47,43 +47,43 @@ new Chart(ctx, {type: 'line', data: {labels, datasets: [{label: 'Unavailable', d
         <tr><th>Location</th><th>Station</th><th>Port</th><th>Status</th><th>Reason</th></tr>
     </thead>
     <tbody>
-        <tr><td><a href='charger_3715_11316.html'>3715</a></td><td><a href='charger_3715_11316.html'>11316</a></td><td>None</td><td>None</td><td>unavailable > 24h</td></tr>
-<tr><td><a href='charger_3715_12983.html'>3715</a></td><td><a href='charger_3715_12983.html'>12983</a></td><td>None</td><td>None</td><td>unavailable > 24h</td></tr>
-<tr><td><a href='charger_3717_16088.html'>3717</a></td><td><a href='charger_3717_16088.html'>16088</a></td><td>None</td><td>None</td><td>unavailable > 24h</td></tr>
-<tr><td><a href='charger_3721_15650.html'>3721</a></td><td><a href='charger_3721_15650.html'>15650</a></td><td>None</td><td>None</td><td>unavailable > 24h</td></tr>
-<tr><td><a href='charger_3722_15644.html'>3722</a></td><td><a href='charger_3722_15644.html'>15644</a></td><td>None</td><td>None</td><td>unavailable > 24h</td></tr>
-<tr><td><a href='charger_3727_15838.html'>3727</a></td><td><a href='charger_3727_15838.html'>15838</a></td><td>None</td><td>None</td><td>unavailable > 24h</td></tr>
-<tr><td><a href='charger_3731_11233.html'>3731</a></td><td><a href='charger_3731_11233.html'>11233</a></td><td>None</td><td>None</td><td>unavailable > 24h</td></tr>
-<tr><td><a href='charger_3734_12222.html'>3734</a></td><td><a href='charger_3734_12222.html'>12222</a></td><td>None</td><td>None</td><td>unavailable > 24h</td></tr>
-<tr><td><a href='charger_3734_12223.html'>3734</a></td><td><a href='charger_3734_12223.html'>12223</a></td><td>None</td><td>None</td><td>unavailable > 24h</td></tr>
-<tr><td><a href='charger_3734_15677.html'>3734</a></td><td><a href='charger_3734_15677.html'>15677</a></td><td>None</td><td>None</td><td>unavailable > 24h</td></tr>
-<tr><td><a href='charger_3737_17008.html'>3737</a></td><td><a href='charger_3737_17008.html'>17008</a></td><td>None</td><td>None</td><td>unavailable > 24h</td></tr>
-<tr><td><a href='charger_3739_15694.html'>3739</a></td><td><a href='charger_3739_15694.html'>15694</a></td><td>None</td><td>None</td><td>unavailable > 24h</td></tr>
-<tr><td><a href='charger_3746_12535.html'>3746</a></td><td><a href='charger_3746_12535.html'>12535</a></td><td>None</td><td>None</td><td>unavailable > 24h</td></tr>
-<tr><td><a href='charger_3747_16916.html'>3747</a></td><td><a href='charger_3747_16916.html'>16916</a></td><td>None</td><td>None</td><td>unavailable > 24h</td></tr>
-<tr><td><a href='charger_3747_16917.html'>3747</a></td><td><a href='charger_3747_16917.html'>16917</a></td><td>None</td><td>None</td><td>unavailable > 24h</td></tr>
-<tr><td><a href='charger_3754_11264.html'>3754</a></td><td><a href='charger_3754_11264.html'>11264</a></td><td>None</td><td>None</td><td>unavailable > 24h</td></tr>
-<tr><td><a href='charger_3755_11272.html'>3755</a></td><td><a href='charger_3755_11272.html'>11272</a></td><td>None</td><td>None</td><td>unavailable > 24h</td></tr>
-<tr><td><a href='charger_3772_11109.html'>3772</a></td><td><a href='charger_3772_11109.html'>11109</a></td><td>None</td><td>None</td><td>unavailable > 24h</td></tr>
-<tr><td><a href='charger_3786_14560.html'>3786</a></td><td><a href='charger_3786_14560.html'>14560</a></td><td>None</td><td>None</td><td>unavailable > 24h</td></tr>
-<tr><td><a href='charger_3786_14561.html'>3786</a></td><td><a href='charger_3786_14561.html'>14561</a></td><td>None</td><td>None</td><td>unavailable > 24h</td></tr>
-<tr><td><a href='charger_3791_14566.html'>3791</a></td><td><a href='charger_3791_14566.html'>14566</a></td><td>None</td><td>None</td><td>unavailable > 24h</td></tr>
-<tr><td><a href='charger_3793_11087.html'>3793</a></td><td><a href='charger_3793_11087.html'>11087</a></td><td>None</td><td>None</td><td>unavailable > 24h</td></tr>
-<tr><td><a href='charger_3793_16191.html'>3793</a></td><td><a href='charger_3793_16191.html'>16191</a></td><td>None</td><td>None</td><td>unavailable > 24h</td></tr>
-<tr><td><a href='charger_3821_11166.html'>3821</a></td><td><a href='charger_3821_11166.html'>11166</a></td><td>None</td><td>None</td><td>unavailable > 24h</td></tr>
-<tr><td><a href='charger_3844_11168.html'>3844</a></td><td><a href='charger_3844_11168.html'>11168</a></td><td>None</td><td>None</td><td>unavailable > 24h</td></tr>
-<tr><td><a href='charger_4535_13727.html'>4535</a></td><td><a href='charger_4535_13727.html'>13727</a></td><td>None</td><td>None</td><td>unavailable > 24h</td></tr>
-<tr><td><a href='charger_4535_13728.html'>4535</a></td><td><a href='charger_4535_13728.html'>13728</a></td><td>None</td><td>None</td><td>unavailable > 24h</td></tr>
-<tr><td><a href='charger_4536_13729.html'>4536</a></td><td><a href='charger_4536_13729.html'>13729</a></td><td>None</td><td>None</td><td>unavailable > 24h</td></tr>
-<tr><td><a href='charger_4536_13730.html'>4536</a></td><td><a href='charger_4536_13730.html'>13730</a></td><td>None</td><td>None</td><td>unavailable > 24h</td></tr>
-<tr><td><a href='charger_4536_13731.html'>4536</a></td><td><a href='charger_4536_13731.html'>13731</a></td><td>None</td><td>None</td><td>unavailable > 24h</td></tr>
+        <tr><td>3715</td><td><a href='charger_3715_11316.html'>11316</a></td><td>None</td><td>None</td><td>unavailable > 24h</td></tr>
+<tr><td>3715</td><td><a href='charger_3715_12983.html'>12983</a></td><td>None</td><td>None</td><td>unavailable > 24h</td></tr>
+<tr><td>3717</td><td><a href='charger_3717_16088.html'>16088</a></td><td>None</td><td>None</td><td>unavailable > 24h</td></tr>
+<tr><td>3721</td><td><a href='charger_3721_15650.html'>15650</a></td><td>None</td><td>None</td><td>unavailable > 24h</td></tr>
+<tr><td>3722</td><td><a href='charger_3722_15644.html'>15644</a></td><td>None</td><td>None</td><td>unavailable > 24h</td></tr>
+<tr><td>3727</td><td><a href='charger_3727_15838.html'>15838</a></td><td>None</td><td>None</td><td>unavailable > 24h</td></tr>
+<tr><td>3731</td><td><a href='charger_3731_11233.html'>11233</a></td><td>None</td><td>None</td><td>unavailable > 24h</td></tr>
+<tr><td>3734</td><td><a href='charger_3734_12222.html'>12222</a></td><td>None</td><td>None</td><td>unavailable > 24h</td></tr>
+<tr><td>3734</td><td><a href='charger_3734_12223.html'>12223</a></td><td>None</td><td>None</td><td>unavailable > 24h</td></tr>
+<tr><td>3734</td><td><a href='charger_3734_15677.html'>15677</a></td><td>None</td><td>None</td><td>unavailable > 24h</td></tr>
+<tr><td>3737</td><td><a href='charger_3737_17008.html'>17008</a></td><td>None</td><td>None</td><td>unavailable > 24h</td></tr>
+<tr><td>3739</td><td><a href='charger_3739_15694.html'>15694</a></td><td>None</td><td>None</td><td>unavailable > 24h</td></tr>
+<tr><td>3746</td><td><a href='charger_3746_12535.html'>12535</a></td><td>None</td><td>None</td><td>unavailable > 24h</td></tr>
+<tr><td>3747</td><td><a href='charger_3747_16916.html'>16916</a></td><td>None</td><td>None</td><td>unavailable > 24h</td></tr>
+<tr><td>3747</td><td><a href='charger_3747_16917.html'>16917</a></td><td>None</td><td>None</td><td>unavailable > 24h</td></tr>
+<tr><td>3754</td><td><a href='charger_3754_11264.html'>11264</a></td><td>None</td><td>None</td><td>unavailable > 24h</td></tr>
+<tr><td>3755</td><td><a href='charger_3755_11272.html'>11272</a></td><td>None</td><td>None</td><td>unavailable > 24h</td></tr>
+<tr><td>3772</td><td><a href='charger_3772_11109.html'>11109</a></td><td>None</td><td>None</td><td>unavailable > 24h</td></tr>
+<tr><td>3786</td><td><a href='charger_3786_14560.html'>14560</a></td><td>None</td><td>None</td><td>unavailable > 24h</td></tr>
+<tr><td>3786</td><td><a href='charger_3786_14561.html'>14561</a></td><td>None</td><td>None</td><td>unavailable > 24h</td></tr>
+<tr><td>3791</td><td><a href='charger_3791_14566.html'>14566</a></td><td>None</td><td>None</td><td>unavailable > 24h</td></tr>
+<tr><td>3793</td><td><a href='charger_3793_11087.html'>11087</a></td><td>None</td><td>None</td><td>unavailable > 24h</td></tr>
+<tr><td>3793</td><td><a href='charger_3793_16191.html'>16191</a></td><td>None</td><td>None</td><td>unavailable > 24h</td></tr>
+<tr><td>3821</td><td><a href='charger_3821_11166.html'>11166</a></td><td>None</td><td>None</td><td>unavailable > 24h</td></tr>
+<tr><td>3844</td><td><a href='charger_3844_11168.html'>11168</a></td><td>None</td><td>None</td><td>unavailable > 24h</td></tr>
+<tr><td>4535</td><td><a href='charger_4535_13727.html'>13727</a></td><td>None</td><td>None</td><td>unavailable > 24h</td></tr>
+<tr><td>4535</td><td><a href='charger_4535_13728.html'>13728</a></td><td>None</td><td>None</td><td>unavailable > 24h</td></tr>
+<tr><td>4536</td><td><a href='charger_4536_13729.html'>13729</a></td><td>None</td><td>None</td><td>unavailable > 24h</td></tr>
+<tr><td>4536</td><td><a href='charger_4536_13730.html'>13730</a></td><td>None</td><td>None</td><td>unavailable > 24h</td></tr>
+<tr><td>4536</td><td><a href='charger_4536_13731.html'>13731</a></td><td>None</td><td>None</td><td>unavailable > 24h</td></tr>
     </tbody>
 </table>
 </div>
 <div class="text-muted small mt-4">
-    <p>Page last updated: 2025-07-24T17:21:03+00:00</p>
-    <p>DB size: 88.1 MB</p>
-    <p>Processed in 4.24 s</p>
+    <p>Page last updated: 2025-07-24T17:54:43+00:00</p>
+    <p>DB size: 89.8 MB</p>
+    <p>Processed in 6.00 s</p>
 </div>
 </div>
 </body>
