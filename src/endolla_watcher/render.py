@@ -149,9 +149,7 @@ def render(
             + "{label: 'Unavailable', data: historyData.map(d => d.unavailable),"
             + "borderColor: '#dc3545', backgroundColor: 'rgba(220,53,69,0.3)', fill: true, stack: 'usage'},"
             + "{label: 'Charging', data: historyData.map(d => d.charging),"
-            + "borderColor: '#198754', backgroundColor: 'rgba(25,135,84,0.3)', fill: true, stack: 'usage'},"
-            + "{label: 'Total', data: historyData.map(d => d.chargers),"
-            + "borderColor: '#0d6efd', backgroundColor: 'rgba(13,110,253,0.3)', fill: false}]},"
+            + "borderColor: '#198754', backgroundColor: 'rgba(25,135,84,0.3)', fill: true, stack: 'usage'}]},"
             + "options: {scales: {x: {type: 'time', time: {unit: 'day'}}, y: {beginAtZero: true, stacked: true}}}});"
         )
     rows = []
