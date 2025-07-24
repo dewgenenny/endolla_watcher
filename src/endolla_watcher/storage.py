@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Tuple
 from .rules import Rules
+from . import stats as stats_mod
 import logging
 
 logger = logging.getLogger(__name__)
@@ -233,3 +234,52 @@ def analyze_chargers(conn: sqlite3.Connection, rules: Rules | None = None) -> Li
 
     logger.debug("Identified %d problematic chargers", len(problematic))
     return problematic
+
+
+def _latest_records(conn: sqlite3.Connection) -> List[Dict[str, Any]]:
+    """Return the most recent status entry for each port."""
+    cur = conn.execute(
+        """
+        SELECT ps.location_id, ps.station_id, ps.port_id, ps.status, ps.last_updated
+        FROM port_status ps
+        JOIN (
+            SELECT location_id, station_id, port_id, MAX(ts) AS max_ts
+            FROM port_status
+            GROUP BY location_id, station_id, port_id
+        ) latest
+        ON ps.location_id = latest.location_id
+        AND ps.station_id = latest.station_id
+        AND ps.port_id = latest.port_id
+        AND ps.ts = latest.max_ts
+        """
+    )
+    return [
+        {
+            "location_id": loc,
+            "station_id": sta,
+            "port_id": port,
+            "status": status,
+            "last_updated": last,
+        }
+        for loc, sta, port, status, last in cur
+    ]
+
+
+def _all_history(conn: sqlite3.Connection) -> Dict[PortKey, List[Tuple[datetime, str]]]:
+    """Return full status history grouped by port."""
+    cur = conn.execute(
+        "SELECT location_id, station_id, port_id, ts, status FROM port_status ORDER BY location_id, station_id, port_id, ts"
+    )
+    history: Dict[PortKey, List[Tuple[datetime, str]]] = {}
+    for loc, sta, port, ts, status in cur:
+        history.setdefault((loc, sta, port), []).append((datetime.fromisoformat(ts), status))
+    return history
+
+
+def stats_from_db(conn: sqlite3.Connection) -> Dict[str, int]:
+    """Compute statistics based on data stored in the database."""
+    latest = _latest_records(conn)
+    stats = stats_mod.from_records(latest)
+    history = _all_history(conn)
+    stats["sessions"] = sum(len(_session_durations(v)) for v in history.values())
+    return stats
