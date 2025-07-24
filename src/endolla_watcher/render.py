@@ -69,6 +69,33 @@ INDEX_TEMPLATE = """
 </html>
 """
 
+# Template for a charger details page
+CHARGER_TEMPLATE = """
+<!DOCTYPE html>
+<html lang='en'>
+<head>
+    <meta charset='UTF-8'>
+    <title>Charger {station_id}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootswatch@5.3.2/dist/flatly/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+{navbar}
+<div class="container py-4">
+<h1 class="mb-4">Charger {station_id}</h1>
+<table class="table table-striped">
+    <thead class="table-dark">
+        <tr><th>Port</th><th>Start</th><th>End</th><th>Duration (min)</th></tr>
+    </thead>
+    <tbody>
+        {rows}
+    </tbody>
+</table>
+<p><a href="index.html">Back to index</a></p>
+</div>
+</body>
+</html>
+"""
+
 # Template for the about page
 ABOUT_TEMPLATE = """
 <!DOCTYPE html>
@@ -128,9 +155,17 @@ def render(
         )
     rows = []
     for r in problematic:
-        row = "<tr>" + "".join(
-            f"<td>{r.get(k,'')}</td>" for k in ["location_id", "station_id", "port_id", "status", "reason"]
-        ) + "</tr>"
+        loc = r.get("location_id") or ""
+        sta = r.get("station_id") or ""
+        url = f"charger_{loc}_{sta}.html"
+        cells = [
+            f"<td><a href='{url}'>{loc}</a></td>",
+            f"<td><a href='{url}'>{sta}</a></td>",
+            f"<td>{r.get('port_id','')}</td>",
+            f"<td>{r.get('status','')}</td>",
+            f"<td>{r.get('reason','')}</td>",
+        ]
+        row = "<tr>" + "".join(cells) + "</tr>"
         rows.append(row)
     html = INDEX_TEMPLATE.format(
         rows="\n".join(rows),
@@ -148,3 +183,35 @@ def render(
 def render_about() -> str:
     """Return the HTML for the about page."""
     return ABOUT_TEMPLATE.format(navbar=NAVBAR)
+
+
+def render_charger(
+    location_id: str | None,
+    station_id: str | None,
+    sessions: Dict[str | None, List[Dict[str, Any]]],
+) -> str:
+    """Return HTML for a single charger with its recent sessions."""
+    rows: List[str] = []
+    for port, items in sessions.items():
+        for s in items:
+            row = (
+                "<tr>"
+                f"<td>{port or ''}</td>"
+                f"<td>{s['start']}</td>"
+                f"<td>{s['end']}</td>"
+                f"<td>{s['duration']:.1f}</td>"
+                "</tr>"
+            )
+            rows.append(row)
+    html = CHARGER_TEMPLATE.format(
+        navbar=NAVBAR,
+        station_id=station_id or '',
+        rows="\n".join(rows),
+    )
+    logger.debug(
+        "Generated charger page for %s/%s with %d rows",
+        location_id,
+        station_id,
+        len(rows),
+    )
+    return html

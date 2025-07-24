@@ -397,3 +397,43 @@ def timeline_stats(conn: sqlite3.Connection) -> List[Dict[str, Any]]:
     ]
     logger.debug("Loaded timeline with %d points", len(result))
     return result
+
+
+def charger_sessions(
+    conn: sqlite3.Connection,
+    location_id: str | None,
+    station_id: str | None,
+    limit: int = 10,
+) -> Dict[str | None, List[Dict[str, Any]]]:
+    """Return recent charging sessions for all ports of a charger."""
+    since = datetime.now().astimezone() - timedelta(days=MAX_DATA_AGE_DAYS)
+    cur = conn.execute(
+        """
+        SELECT port_id, ts, status
+        FROM port_status
+        WHERE location_id IS ? AND station_id IS ? AND ts >= ?
+        ORDER BY port_id, ts
+        """,
+        (location_id, station_id, since.isoformat()),
+    )
+    history: Dict[str | None, List[Tuple[datetime, str]]] = {}
+    for port, ts, status in cur:
+        history.setdefault(port, []).append((datetime.fromisoformat(ts), status))
+
+    result: Dict[str | None, List[Dict[str, Any]]] = {}
+    for port, events in history.items():
+        sessions = _session_records(events)
+        sessions.sort(key=lambda r: r[0], reverse=True)
+        trimmed = sessions[:limit]
+        result[port] = [
+            {
+                "start": s.isoformat(timespec="seconds"),
+                "end": e.isoformat(timespec="seconds"),
+                "duration": dur,
+            }
+            for s, e, dur in trimmed
+        ]
+    logger.debug(
+        "Loaded %d session lists for charger %s/%s", len(result), location_id, station_id
+    )
+    return result

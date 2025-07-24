@@ -6,7 +6,7 @@ from datetime import datetime
 import logging
 from pathlib import Path
 from .data import fetch_data, parse_usage
-from .render import render, render_about
+from .render import render, render_about, render_charger
 from . import storage
 from .rules import Rules
 from .logging_utils import setup_logging
@@ -33,7 +33,6 @@ def update_once(output: Path, db: Path, rules: Rules | None = None) -> None:
     problematic = storage.analyze_chargers(conn, rules)
     stats = storage.stats_from_db(conn)
     history = storage.timeline_stats(conn)
-    conn.close()
     db_size = db.stat().st_size / (1024 * 1024)
     html = render(
         problematic,
@@ -47,6 +46,20 @@ def update_once(output: Path, db: Path, rules: Rules | None = None) -> None:
     output.write_text(html, encoding="utf-8")
     about_path = output.parent / "about.html"
     about_path.write_text(render_about(), encoding="utf-8")
+
+    # Generate charger detail pages for problematic entries
+    for r in problematic:
+        sessions = storage.charger_sessions(
+            conn,
+            r.get("location_id"),
+            r.get("station_id"),
+            limit=10,
+        )
+        page = render_charger(r.get("location_id"), r.get("station_id"), sessions)
+        fname = f"charger_{r.get('location_id')}_{r.get('station_id')}.html"
+        (output.parent / fname).write_text(page, encoding="utf-8")
+
+    conn.close()
     logger.debug("Wrote output to %s", output)
 
 

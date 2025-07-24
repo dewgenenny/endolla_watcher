@@ -20,7 +20,8 @@ python -m endolla_watcher.loop --fetch-interval 60 --update-interval 3600 \
 The site can then be served from the `site/` directory. It now features a small
 Bootstrap-based theme, a weekly history graph, the average charging time over
 the last 24 hours, the number of short charging sessions and an `about.html`
-page with project details.
+page with project details. Problematic chargers link to individual pages
+showing their most recent charging sessions.
 
 ## Database
 
