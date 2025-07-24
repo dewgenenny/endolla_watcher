@@ -5,7 +5,7 @@ import time
 import logging
 from pathlib import Path
 from .data import fetch_data, parse_usage
-from .render import render
+from .render import render, render_about
 from . import storage
 from .rules import Rules
 from .logging_utils import setup_logging
@@ -34,6 +34,8 @@ def update_once(output: Path, db: Path, rules: Rules | None = None) -> None:
     html = render(problematic, stats)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(html, encoding="utf-8")
+    about_path = output.parent / "about.html"
+    about_path.write_text(render_about(), encoding="utf-8")
     logger.debug("Wrote output to %s", output)
 
 
