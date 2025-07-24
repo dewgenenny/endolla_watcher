@@ -18,8 +18,8 @@ python -m endolla_watcher.loop --fetch-interval 60 --update-interval 3600 \
 ```
 
 The site can then be served from the `site/` directory. It now features a small
-Bootstrap-based theme, a weekly history graph and an `about.html` page with
-project details.
+Bootstrap-based theme, a weekly history graph, the average charging time over
+the last 24 hours and an `about.html` page with project details.
 
 ## Database
 

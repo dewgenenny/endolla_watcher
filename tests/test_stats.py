@@ -1,0 +1,40 @@
+import sqlite3
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+import endolla_watcher.storage as storage
+
+
+def test_average_session_last_day():
+    conn = storage.connect(Path(":memory:"))
+    now = datetime.now(timezone.utc)
+
+    old_start = now - timedelta(days=2)
+    old_end = old_start + timedelta(minutes=30)
+    new_start = now - timedelta(hours=2)
+    new_end = new_start + timedelta(hours=1)
+
+    storage.save_snapshot(
+        conn,
+        [{"location_id": "L1", "station_id": "S1", "port_id": "P1", "status": "IN_USE", "last_updated": old_start.isoformat()}],
+        ts=old_start,
+    )
+    storage.save_snapshot(
+        conn,
+        [{"location_id": "L1", "station_id": "S1", "port_id": "P1", "status": "AVAILABLE", "last_updated": old_end.isoformat()}],
+        ts=old_end,
+    )
+    storage.save_snapshot(
+        conn,
+        [{"location_id": "L1", "station_id": "S1", "port_id": "P1", "status": "IN_USE", "last_updated": new_start.isoformat()}],
+        ts=new_start,
+    )
+    storage.save_snapshot(
+        conn,
+        [{"location_id": "L1", "station_id": "S1", "port_id": "P1", "status": "AVAILABLE", "last_updated": new_end.isoformat()}],
+        ts=new_end,
+    )
+
+    stats = storage.stats_from_db(conn)
+    assert stats["avg_session_min"] == 60
+    conn.close()
