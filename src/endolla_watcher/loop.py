@@ -107,6 +107,8 @@ def main() -> None:
         unavailable_hours=args.unavailable_hours,
     )
 
+    # Track the next scheduled time for each task. The intervals should
+    # remain consistent regardless of how long each action takes to run.
     next_fetch = time.monotonic()
     next_update = time.monotonic()
 
@@ -115,7 +117,10 @@ def main() -> None:
         if now >= next_fetch:
             logger.info("Fetching data")
             fetch_once(args.db, args.file)
-            next_fetch = now + args.fetch_interval
+            next_fetch += args.fetch_interval
+            if next_fetch <= now:
+                # Catch up if the fetch took longer than the interval
+                next_fetch = now + args.fetch_interval
 
         if now >= next_update:
             logger.info("Updating report")
@@ -136,9 +141,11 @@ def main() -> None:
                     subprocess.check_call(cmd)
                 except subprocess.CalledProcessError as exc:
                     logger.error("push_site failed: %s", exc)
-            next_update = now + args.update_interval
+            next_update += args.update_interval
+            if next_update <= now:
+                next_update = now + args.update_interval
 
-        sleep_for = min(next_fetch, next_update) - now
+        sleep_for = min(next_fetch, next_update) - time.monotonic()
         if sleep_for > 0:
             time.sleep(sleep_for)
 
