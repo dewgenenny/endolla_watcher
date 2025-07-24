@@ -28,6 +28,7 @@ INDEX_TEMPLATE = """
     <title>Endolla Watcher</title>
     <link href="https://cdn.jsdelivr.net/npm/bootswatch@5.3.2/dist/flatly/bootstrap.min.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
 </head>
 <body>
 {navbar}
@@ -97,7 +98,7 @@ def render(
             "const historyData = "
             + json.dumps(history)
             + ";\n"
-            + "const labels = historyData.map(d => new Date(d.ts).toLocaleDateString());\n"
+            + "const labels = historyData.map(d => d.ts);\n"
             + "const ctx = document.getElementById('historyChart').getContext('2d');\n"
             + "new Chart(ctx, {type: 'line', data: {labels, datasets: ["
             + "{label: 'Unavailable', data: historyData.map(d => d.unavailable),"
@@ -106,7 +107,7 @@ def render(
             + "borderColor: '#198754', backgroundColor: 'rgba(25,135,84,0.3)', fill: true, stack: 'usage'},"
             + "{label: 'Total', data: historyData.map(d => d.chargers),"
             + "borderColor: '#0d6efd', backgroundColor: 'rgba(13,110,253,0.3)', fill: false}]},"
-            + "options: {scales: {y: {beginAtZero: true, stacked: true}}}});"
+            + "options: {scales: {x: {type: 'time', time: {unit: 'day'}}, y: {beginAtZero: true, stacked: true}}}});"
         )
     rows = []
     for r in problematic:
