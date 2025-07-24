@@ -4,27 +4,40 @@
 <head>
     <meta charset='UTF-8'>
     <title>Endolla Watcher</title>
-    <style>
-        table {border-collapse: collapse;}
-        th, td {border: 1px solid #ccc; padding: 4px;}
-    </style>
+    <link href="https://cdn.jsdelivr.net/npm/bootswatch@5.3.2/dist/flatly/bootstrap.min.css" rel="stylesheet">
 </head>
 <body>
-<h1>Statistics</h1>
-<ul>
-    <li>Total chargers: 1398</li>
-    <li>Unavailable chargers: 125</li>
-    <li>Currently charging: 197</li>
-    <li>Total charging events: 241</li>
+
+<nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+  <div class="container-fluid">
+    <a class="navbar-brand" href="index.html">Endolla Watcher</a>
+    <div class="collapse navbar-collapse">
+      <ul class="navbar-nav ms-auto">
+        <li class="nav-item"><a class="nav-link" href="about.html">About</a></li>
+      </ul>
+    </div>
+  </div>
+</nav>
+
+<div class="container py-4">
+<h1 class="mb-4">Network Overview</h1>
+<ul class="list-group mb-4">
+    <li class="list-group-item">Total chargers: 1398</li>
+    <li class="list-group-item">Unavailable chargers: 125</li>
+    <li class="list-group-item">Currently charging: 197</li>
+    <li class="list-group-item">Total charging events: 241</li>
 </ul>
-<h1>Problematic Chargers</h1>
-<table>
-    <thead>
+<h2 class="mt-4">Problematic Chargers</h2>
+<div class="table-responsive">
+<table class="table table-striped">
+    <thead class="table-dark">
         <tr><th>Location</th><th>Station</th><th>Port</th><th>Status</th><th>Reason</th></tr>
     </thead>
     <tbody>
         
     </tbody>
 </table>
+</div>
+</div>
 </body>
 </html>
