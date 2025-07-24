@@ -37,4 +37,28 @@ def test_average_session_last_day():
 
     stats = storage.stats_from_db(conn)
     assert stats["avg_session_min"] == 60
+    assert stats["short_sessions"] == 0
+    conn.close()
+
+
+def test_count_short_sessions():
+    conn = storage.connect(Path(":memory:"))
+    now = datetime.now(timezone.utc)
+
+    start = now - timedelta(hours=1)
+    end = start + timedelta(minutes=2)
+
+    storage.save_snapshot(
+        conn,
+        [{"location_id": "L1", "station_id": "S1", "port_id": "P1", "status": "IN_USE", "last_updated": start.isoformat()}],
+        ts=start,
+    )
+    storage.save_snapshot(
+        conn,
+        [{"location_id": "L1", "station_id": "S1", "port_id": "P1", "status": "AVAILABLE", "last_updated": end.isoformat()}],
+        ts=end,
+    )
+
+    stats = storage.stats_from_db(conn)
+    assert stats["short_sessions"] == 1
     conn.close()

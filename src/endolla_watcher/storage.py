@@ -336,6 +336,10 @@ def stats_from_db(conn: sqlite3.Connection) -> Dict[str, float]:
     stats = stats_mod.from_records(latest)
     history = _all_history(conn)
     stats["sessions"] = sum(len(_session_durations(v)) for v in history.values())
+    stats["short_sessions"] = sum(
+        len([d for d in _session_durations(v) if d < stats_mod.SHORT_SESSION_MAX_MIN])
+        for v in history.values()
+    )
 
     since = datetime.now().astimezone() - timedelta(hours=24)
     durations: List[float] = []

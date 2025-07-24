@@ -39,6 +39,7 @@ INDEX_TEMPLATE = """
     <li class="list-group-item">Unavailable chargers: {unavailable}</li>
     <li class="list-group-item">Currently charging: {charging}</li>
     <li class="list-group-item">Total charging events: {sessions}</li>
+    <li class="list-group-item">Short sessions (<5 min): {short_sessions}</li>
     <li class="list-group-item">Avg session (24h): {avg_session_min:.1f} min</li>
 </ul>
 <div class="mb-4">
@@ -100,7 +101,14 @@ def render(
     """Return the HTML for the main report page."""
     logger.debug("Rendering %d problematic ports", len(problematic))
     if stats is None:
-        stats = {"chargers": 0, "unavailable": 0, "charging": 0, "sessions": 0, "avg_session_min": 0.0}
+        stats = {
+            "chargers": 0,
+            "unavailable": 0,
+            "charging": 0,
+            "sessions": 0,
+            "short_sessions": 0,
+            "avg_session_min": 0.0,
+        }
     history_js = ""
     if history:
         history_js = (
