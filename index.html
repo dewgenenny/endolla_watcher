@@ -25,17 +25,17 @@
 <h1 class="mb-4">Network Overview</h1>
 <ul class="list-group mb-4">
     <li class="list-group-item">Total chargers: 1398</li>
-    <li class="list-group-item">Unavailable chargers: 132</li>
-    <li class="list-group-item">Currently charging: 181</li>
-    <li class="list-group-item">Total charging events: 636</li>
-    <li class="list-group-item">Short sessions (<5 min): 10</li>
-    <li class="list-group-item">Avg session (24h): 206.0 min</li>
+    <li class="list-group-item">Unavailable chargers: 135</li>
+    <li class="list-group-item">Currently charging: 187</li>
+    <li class="list-group-item">Total charging events: 0</li>
+    <li class="list-group-item">Short sessions (<5 min): 0</li>
+    <li class="list-group-item">Avg session (24h): 0.0 min</li>
 </ul>
 <div class="mb-4">
     <canvas id="historyChart" height="80"></canvas>
 </div>
 <script>
-const historyData = [{"ts": "2025-07-23 14:15:00", "chargers": 1398, "unavailable": 156, "charging": 173}, {"ts": "2025-07-23 14:30:00", "chargers": 1398, "unavailable": 156, "charging": 174}, {"ts": "2025-07-23 14:45:00", "chargers": 1398, "unavailable": 157, "charging": 179}, {"ts": "2025-07-23 16:00:00", "chargers": 1398, "unavailable": 164, "charging": 181}, {"ts": "2025-07-23 16:15:00", "chargers": 1398, "unavailable": 163, "charging": 188}, {"ts": "2025-07-23 16:30:00", "chargers": 1398, "unavailable": 146, "charging": 196}, {"ts": "2025-07-23 16:45:00", "chargers": 1398, "unavailable": 144, "charging": 196}, {"ts": "2025-07-23 17:00:00", "chargers": 1398, "unavailable": 165, "charging": 196}, {"ts": "2025-07-23 17:45:00", "chargers": 1398, "unavailable": 151, "charging": 189}, {"ts": "2025-07-23 18:00:00", "chargers": 1398, "unavailable": 150, "charging": 194}, {"ts": "2025-07-24 07:30:00", "chargers": 1398, "unavailable": 125, "charging": 197}, {"ts": "2025-07-24 07:45:00", "chargers": 1398, "unavailable": 125, "charging": 197}, {"ts": "2025-07-24 08:00:00", "chargers": 1398, "unavailable": 125, "charging": 197}, {"ts": "2025-07-24 08:15:00", "chargers": 1398, "unavailable": 125, "charging": 197}, {"ts": "2025-07-24 08:30:00", "chargers": 1398, "unavailable": 125, "charging": 197}, {"ts": "2025-07-24 08:45:00", "chargers": 1398, "unavailable": 125, "charging": 197}, {"ts": "2025-07-24 09:00:00", "chargers": 1398, "unavailable": 125, "charging": 197}, {"ts": "2025-07-24 09:15:00", "chargers": 1398, "unavailable": 125, "charging": 197}, {"ts": "2025-07-24 09:30:00", "chargers": 1398, "unavailable": 122, "charging": 205}, {"ts": "2025-07-24 09:45:00", "chargers": 1398, "unavailable": 124, "charging": 208}, {"ts": "2025-07-24 10:00:00", "chargers": 1398, "unavailable": 125, "charging": 202}, {"ts": "2025-07-24 10:15:00", "chargers": 1398, "unavailable": 121, "charging": 205}, {"ts": "2025-07-24 10:30:00", "chargers": 1398, "unavailable": 124, "charging": 202}, {"ts": "2025-07-24 10:45:00", "chargers": 1398, "unavailable": 126, "charging": 206}, {"ts": "2025-07-24 11:00:00", "chargers": 1398, "unavailable": 126, "charging": 206}, {"ts": "2025-07-24 11:15:00", "chargers": 1398, "unavailable": 126, "charging": 206}, {"ts": "2025-07-24 11:30:00", "chargers": 1398, "unavailable": 129, "charging": 205}, {"ts": "2025-07-24 11:45:00", "chargers": 1398, "unavailable": 124, "charging": 194}, {"ts": "2025-07-24 12:00:00", "chargers": 1398, "unavailable": 123, "charging": 192}, {"ts": "2025-07-24 12:15:00", "chargers": 1398, "unavailable": 123, "charging": 195}, {"ts": "2025-07-24 12:30:00", "chargers": 1398, "unavailable": 123, "charging": 188}, {"ts": "2025-07-24 12:45:00", "chargers": 1398, "unavailable": 123, "charging": 185}, {"ts": "2025-07-24 13:00:00", "chargers": 1398, "unavailable": 125, "charging": 184}, {"ts": "2025-07-24 13:15:00", "chargers": 1398, "unavailable": 126, "charging": 174}, {"ts": "2025-07-24 13:30:00", "chargers": 1398, "unavailable": 127, "charging": 171}, {"ts": "2025-07-24 13:45:00", "chargers": 1398, "unavailable": 121, "charging": 163}, {"ts": "2025-07-24 14:00:00", "chargers": 1398, "unavailable": 121, "charging": 171}, {"ts": "2025-07-24 14:15:00", "chargers": 1398, "unavailable": 128, "charging": 170}, {"ts": "2025-07-24 14:30:00", "chargers": 1398, "unavailable": 127, "charging": 169}, {"ts": "2025-07-24 14:45:00", "chargers": 1398, "unavailable": 127, "charging": 172}, {"ts": "2025-07-24 15:00:00", "chargers": 1398, "unavailable": 127, "charging": 171}, {"ts": "2025-07-24 15:15:00", "chargers": 1398, "unavailable": 127, "charging": 171}, {"ts": "2025-07-24 15:30:00", "chargers": 1398, "unavailable": 129, "charging": 174}, {"ts": "2025-07-24 15:45:00", "chargers": 1398, "unavailable": 125, "charging": 174}, {"ts": "2025-07-24 16:00:00", "chargers": 1398, "unavailable": 132, "charging": 180}, {"ts": "2025-07-24 16:15:00", "chargers": 1398, "unavailable": 132, "charging": 180}, {"ts": "2025-07-24 16:30:00", "chargers": 1398, "unavailable": 132, "charging": 181}];
+const historyData = [{"ts": "2025-07-24 17:15:00", "chargers": 1398, "unavailable": 135, "charging": 187}];
 const labels = historyData.map(d => d.ts);
 const ctx = document.getElementById('historyChart').getContext('2d');
 new Chart(ctx, {type: 'line', data: {labels, datasets: [{label: 'Unavailable', data: historyData.map(d => d.unavailable),borderColor: '#dc3545', backgroundColor: 'rgba(220,53,69,0.3)', fill: true, stack: 'usage'},{label: 'Charging', data: historyData.map(d => d.charging),borderColor: '#198754', backgroundColor: 'rgba(25,135,84,0.3)', fill: true, stack: 'usage'},{label: 'Total', data: historyData.map(d => d.chargers),borderColor: '#0d6efd', backgroundColor: 'rgba(13,110,253,0.3)', fill: false}]},options: {scales: {x: {type: 'time', time: {unit: 'day'}}, y: {beginAtZero: true, stacked: true}}}});
@@ -47,43 +47,14 @@ new Chart(ctx, {type: 'line', data: {labels, datasets: [{label: 'Unavailable', d
         <tr><th>Location</th><th>Station</th><th>Port</th><th>Status</th><th>Reason</th></tr>
     </thead>
     <tbody>
-        <tr><td>3715</td><td>11316</td><td>None</td><td>None</td><td>unavailable > 24h</td></tr>
-<tr><td>3715</td><td>12983</td><td>None</td><td>None</td><td>unavailable > 24h</td></tr>
-<tr><td>3717</td><td>16088</td><td>None</td><td>None</td><td>unavailable > 24h</td></tr>
-<tr><td>3721</td><td>15650</td><td>None</td><td>None</td><td>unavailable > 24h</td></tr>
-<tr><td>3722</td><td>15644</td><td>None</td><td>None</td><td>unavailable > 24h</td></tr>
-<tr><td>3727</td><td>15838</td><td>None</td><td>None</td><td>unavailable > 24h</td></tr>
-<tr><td>3731</td><td>11233</td><td>None</td><td>None</td><td>unavailable > 24h</td></tr>
-<tr><td>3734</td><td>12222</td><td>None</td><td>None</td><td>unavailable > 24h</td></tr>
-<tr><td>3734</td><td>12223</td><td>None</td><td>None</td><td>unavailable > 24h</td></tr>
-<tr><td>3734</td><td>15677</td><td>None</td><td>None</td><td>unavailable > 24h</td></tr>
-<tr><td>3737</td><td>17008</td><td>None</td><td>None</td><td>unavailable > 24h</td></tr>
-<tr><td>3739</td><td>15694</td><td>None</td><td>None</td><td>unavailable > 24h</td></tr>
-<tr><td>3746</td><td>12535</td><td>None</td><td>None</td><td>unavailable > 24h</td></tr>
-<tr><td>3747</td><td>16916</td><td>None</td><td>None</td><td>unavailable > 24h</td></tr>
-<tr><td>3747</td><td>16917</td><td>None</td><td>None</td><td>unavailable > 24h</td></tr>
-<tr><td>3754</td><td>11264</td><td>None</td><td>None</td><td>unavailable > 24h</td></tr>
-<tr><td>3755</td><td>11272</td><td>None</td><td>None</td><td>unavailable > 24h</td></tr>
-<tr><td>3772</td><td>11109</td><td>None</td><td>None</td><td>unavailable > 24h</td></tr>
-<tr><td>3786</td><td>14560</td><td>None</td><td>None</td><td>unavailable > 24h</td></tr>
-<tr><td>3786</td><td>14561</td><td>None</td><td>None</td><td>unavailable > 24h</td></tr>
-<tr><td>3791</td><td>14566</td><td>None</td><td>None</td><td>unavailable > 24h</td></tr>
-<tr><td>3793</td><td>11087</td><td>None</td><td>None</td><td>unavailable > 24h</td></tr>
-<tr><td>3793</td><td>16191</td><td>None</td><td>None</td><td>unavailable > 24h</td></tr>
-<tr><td>3821</td><td>11166</td><td>None</td><td>None</td><td>unavailable > 24h</td></tr>
-<tr><td>3844</td><td>11168</td><td>None</td><td>None</td><td>unavailable > 24h</td></tr>
-<tr><td>4535</td><td>13727</td><td>None</td><td>None</td><td>unavailable > 24h</td></tr>
-<tr><td>4535</td><td>13728</td><td>None</td><td>None</td><td>unavailable > 24h</td></tr>
-<tr><td>4536</td><td>13729</td><td>None</td><td>None</td><td>unavailable > 24h</td></tr>
-<tr><td>4536</td><td>13730</td><td>None</td><td>None</td><td>unavailable > 24h</td></tr>
-<tr><td>4536</td><td>13731</td><td>None</td><td>None</td><td>unavailable > 24h</td></tr>
+        
     </tbody>
 </table>
 </div>
 <div class="text-muted small mt-4">
-    <p>Page last updated: 2025-07-24T16:34:39+00:00</p>
-    <p>DB size: 79.8 MB</p>
-    <p>Processed in 3.69 s</p>
+    <p>Page last updated: 2025-07-24T17:18:27+00:00</p>
+    <p>DB size: 0.2 MB</p>
+    <p>Processed in 0.02 s</p>
 </div>
 </div>
 </body>
