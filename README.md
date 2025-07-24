@@ -24,8 +24,7 @@ Bootstrap-based theme and an `about.html` page with project details.
 
 ```
 docker build -t endolla-watcher .
-docker run -v $(pwd)/endolla.json:/data/endolla.json \
-           -v $(pwd)/endolla.db:/data/endolla.db \
+docker run -v $(pwd)/endolla.db:/data/endolla.db \
            -v $(pwd)/site:/data/site \
            -e GH_TOKEN=YOURTOKEN \
            -e REPO_URL=https://github.com/you/repo.git \
@@ -36,10 +35,12 @@ docker run -v $(pwd)/endolla.json:/data/endolla.json \
            --push-site
 ```
 
-The entrypoint already sets the `--file`, `--output` and `--db` options to use
-`/data` inside the container. Any arguments provided when running the image are
-appended to those defaults, so you only need to specify the options you wish to
-change, such as the fetch interval or `--push-site`.
+The entrypoint fetches the dataset from the public API and sets the `--output`
+and `--db` paths under `/data`. Any arguments provided when running the image
+are appended to those defaults, so you only need to specify the options you wish
+to change, such as the fetch interval or `--push-site`. To analyse a specific
+dataset file instead of the live data, start the container with
+`--file /path/to/file`.
 
 The image contains `git` and the `push_site.py` helper so updates can be
 published directly from within the container. Provide the GitHub token and
