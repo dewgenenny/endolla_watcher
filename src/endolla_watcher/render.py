@@ -58,6 +58,11 @@ INDEX_TEMPLATE = """
     </tbody>
 </table>
 </div>
+<div class="text-muted small mt-4">
+    <p>Page last updated: {updated}</p>
+    <p>DB size: {db_size:.1f} MB</p>
+    <p>Processed in {elapsed:.2f} s</p>
+</div>
 </div>
 </body>
 </html>
@@ -88,6 +93,9 @@ def render(
     problematic: List[Dict[str, Any]],
     stats: Dict[str, float] | None = None,
     history: List[Dict[str, Any]] | None = None,
+    updated: str | None = None,
+    db_size: float | None = None,
+    elapsed: float | None = None,
 ) -> str:
     """Return the HTML for the main report page."""
     logger.debug("Rendering %d problematic ports", len(problematic))
@@ -117,7 +125,13 @@ def render(
         ) + "</tr>"
         rows.append(row)
     html = INDEX_TEMPLATE.format(
-        rows="\n".join(rows), navbar=NAVBAR, history_js=history_js, **stats
+        rows="\n".join(rows),
+        navbar=NAVBAR,
+        history_js=history_js,
+        updated=updated or "N/A",
+        db_size=(db_size if db_size is not None else 0.0),
+        elapsed=(elapsed if elapsed is not None else 0.0),
+        **stats,
     )
     logger.debug("Generated HTML with %d rows", len(rows))
     return html
