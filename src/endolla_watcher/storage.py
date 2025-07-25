@@ -348,6 +348,15 @@ def stats_from_db(conn: sqlite3.Connection) -> Dict[str, float]:
             if start >= since:
                 durations.append(dur)
     stats["avg_session_min"] = sum(durations) / len(durations) if durations else 0.0
+
+    # Count charging sessions that started since midnight today
+    today = datetime.now().astimezone().replace(hour=0, minute=0, second=0, microsecond=0)
+    charges_today = 0
+    for events in history.values():
+        for start, end, _ in _session_records(events):
+            if start >= today:
+                charges_today += 1
+    stats["charges_today"] = charges_today
     return stats
 
 

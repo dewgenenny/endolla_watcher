@@ -37,4 +37,5 @@ def from_records(records: Iterable[Dict[str, Any]]) -> Dict[str, float]:
         "sessions": sessions,
         "avg_session_min": avg,
         "short_sessions": short_sessions,
+        "charges_today": 0,
     }
