@@ -35,10 +35,11 @@ INDEX_TEMPLATE = """
 <div class="container py-4">
 <h1 class="mb-4">Network Overview</h1>
 <ul class="list-group mb-4">
-    <li class="list-group-item">Total chargers: {chargers}</li>
-    <li class="list-group-item">Unavailable chargers: {unavailable}</li>
+    <li class="list-group-item">Total ports: {chargers}</li>
+    <li class="list-group-item">Unavailable ports: {unavailable}</li>
     <li class="list-group-item">Currently charging: {charging}</li>
     <li class="list-group-item">Total charging events: {sessions}</li>
+    <li class="list-group-item">Charges today: {charges_today}</li>
     <li class="list-group-item">Short sessions (<5 min): {short_sessions}</li>
     <li class="list-group-item">Avg session (24h): {avg_session_min:.1f} min</li>
 </ul>
@@ -134,6 +135,7 @@ def render(
             "unavailable": 0,
             "charging": 0,
             "sessions": 0,
+            "charges_today": 0,
             "short_sessions": 0,
             "avg_session_min": 0.0,
         }

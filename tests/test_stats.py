@@ -38,6 +38,7 @@ def test_average_session_last_day():
     stats = storage.stats_from_db(conn)
     assert stats["avg_session_min"] == 60
     assert stats["short_sessions"] == 0
+    assert stats["charges_today"] == 1
     conn.close()
 
 
@@ -61,4 +62,5 @@ def test_count_short_sessions():
 
     stats = storage.stats_from_db(conn)
     assert stats["short_sessions"] == 1
+    assert stats["charges_today"] == 1
     conn.close()
