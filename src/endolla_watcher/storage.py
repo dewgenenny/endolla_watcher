@@ -17,14 +17,16 @@ CREATE TABLE IF NOT EXISTS port_status (
     status TEXT,
     last_updated TEXT
 );
-CREATE INDEX IF NOT EXISTS idx_port_ts ON port_status(location_id, station_id, port_id, ts);
+CREATE INDEX IF NOT EXISTS idx_port_ts
+    ON port_status(location_id, station_id, port_id, ts);
 """
 
 # Current schema version for migrations
-CURRENT_SCHEMA_VERSION = 1
+CURRENT_SCHEMA_VERSION = 2
 
 MIGRATIONS = {
     1: SCHEMA,
+    2: "CREATE INDEX IF NOT EXISTS idx_ts ON port_status(ts);",
 }
 
 # Delete records older than this many days
@@ -213,6 +215,7 @@ def analyze_chargers(
     rules: Rules | None = None,
     *,
     now: datetime | None = None,
+    history: Dict[PortKey, List[Tuple[datetime, str]]] | None = None,
 ) -> tuple[list[Dict[str, Any]], Dict[str, int]]:
     """Classify chargers as problematic based on configurable rules."""
     if rules is None:
@@ -223,7 +226,19 @@ def analyze_chargers(
     earliest = now - timedelta(
         days=max(rules.unused_days, rules.long_session_days, rules.unavailable_hours / 24)
     )
-    history = _recent_status_history(conn, earliest, now)
+    if history is None:
+        history = _recent_status_history(conn, earliest, now)
+    else:
+        filtered: Dict[PortKey, List[Tuple[datetime, str]]] = {}
+        for key, events in history.items():
+            ev = [
+                (ts, st)
+                for ts, st in events
+                if earliest <= ts <= now
+            ]
+            if ev:
+                filtered[key] = ev
+        history = filtered
 
     # Organize data per station
     stations: Dict[Tuple[str | None, str | None], Dict[str | None, List[Tuple[datetime, str]]]] = {}
@@ -350,11 +365,21 @@ def _all_history(conn: sqlite3.Connection) -> Dict[PortKey, List[Tuple[datetime,
 
 
 def _count_unused_chargers(
-    conn: sqlite3.Connection, days: int, now: datetime
+    conn: sqlite3.Connection,
+    days: int,
+    now: datetime,
+    history: Dict[PortKey, List[Tuple[datetime, str]]] | None = None,
 ) -> int:
     """Return the number of chargers unused for more than ``days``."""
     earliest = now - timedelta(days=days)
-    history = _recent_status_history(conn, earliest, now)
+    if history is None:
+        history = _recent_status_history(conn, earliest, now)
+    else:
+        filtered = [
+            (k, [(ts, st) for ts, st in v if earliest <= ts <= now])
+            for k, v in history.items()
+        ]
+        history = {k: ev for k, ev in filtered if ev}
 
     stations: Dict[Tuple[str | None, str | None], Dict[str | None, List[Tuple[datetime, str]]]] = {}
     for (loc, sta, port), events in history.items():
@@ -411,6 +436,17 @@ def timeline_stats(
     """Return aggregated statistics every 15 minutes for the past week."""
     placeholders = ",".join("?" for _ in UNAVAILABLE_STATUSES)
     since = datetime.now().astimezone() - timedelta(days=7)
+    if rules is None:
+        rules = Rules()
+    history_span = max(
+        rules.unused_days,
+        rules.long_session_days,
+        rules.unavailable_hours / 24,
+    )
+    full_history = _recent_status_history(
+        conn,
+        since - timedelta(days=history_span),
+    )
     cur = conn.execute(
         f"""
         WITH latest AS (
@@ -448,7 +484,12 @@ def timeline_stats(
     result = []
     for slot, chargers, unavailable, charging in slots:
         slot_ts = datetime.fromisoformat(slot).replace(tzinfo=timezone.utc)
-        problematic, _ = analyze_chargers(conn, rules, now=slot_ts)
+        problematic, _ = analyze_chargers(
+            conn,
+            rules,
+            now=slot_ts,
+            history=full_history,
+        )
         result.append(
             {
                 "ts": slot,
@@ -456,9 +497,24 @@ def timeline_stats(
                 "unavailable": unavailable,
                 "charging": charging,
                 "problematic": len(problematic),
-                "unused_1": _count_unused_chargers(conn, 1, slot_ts),
-                "unused_2": _count_unused_chargers(conn, 2, slot_ts),
-                "unused_7": _count_unused_chargers(conn, 7, slot_ts),
+                "unused_1": _count_unused_chargers(
+                    conn,
+                    1,
+                    slot_ts,
+                    history=full_history,
+                ),
+                "unused_2": _count_unused_chargers(
+                    conn,
+                    2,
+                    slot_ts,
+                    history=full_history,
+                ),
+                "unused_7": _count_unused_chargers(
+                    conn,
+                    7,
+                    slot_ts,
+                    history=full_history,
+                ),
             }
         )
     logger.debug("Loaded timeline with %d points", len(result))
