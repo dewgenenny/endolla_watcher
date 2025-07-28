@@ -371,15 +371,19 @@ def _count_unused_chargers(
     history: Dict[PortKey, List[Tuple[datetime, str]]] | None = None,
 ) -> int:
     """Return the number of chargers unused for more than ``days``."""
-    earliest = now - timedelta(days=days)
     if history is None:
-        history = _recent_status_history(conn, earliest, now)
+        # Load all available history so chargers with no recent events are
+        # included in the count. ``_all_history`` is bounded by the data
+        # retention policy so this remains inexpensive.
+        history = _all_history(conn)
     else:
-        filtered = [
-            (k, [(ts, st) for ts, st in v if earliest <= ts <= now])
+        # Trim any events in the future but keep older ones so we can detect
+        # chargers with no records in the desired window.
+        history = {
+            k: [(ts, st) for ts, st in v if ts <= now]
             for k, v in history.items()
-        ]
-        history = {k: ev for k, ev in filtered if ev}
+            if any(ts <= now for ts, _ in v)
+        }
 
     stations: Dict[Tuple[str | None, str | None], Dict[str | None, List[Tuple[datetime, str]]]] = {}
     for (loc, sta, port), events in history.items():
