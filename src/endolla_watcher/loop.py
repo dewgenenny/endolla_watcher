@@ -7,7 +7,7 @@ import logging
 from pathlib import Path
 from typing import Dict
 from .data import fetch_data, fetch_locations, parse_usage
-from .render import render, render_about, render_charger
+from .render import render, render_about, render_charger, render_problematic
 from . import storage
 from .rules import Rules
 from .logging_utils import setup_logging
@@ -39,11 +39,13 @@ def update_once(
     problematic, rule_counts = storage.analyze_chargers(conn, rules)
     stats = storage.stats_from_db(conn)
     history = storage.timeline_stats(conn, rules)
+    daily = storage.sessions_per_day(conn)
     db_size = db.stat().st_size / (1024 * 1024)
     html = render(
         problematic,
         stats,
         history,
+        daily,
         rule_counts,
         rules,
         updated=datetime.now().astimezone().isoformat(timespec="seconds"),
@@ -55,6 +57,15 @@ def update_once(
     output.write_text(html, encoding="utf-8")
     about_path = output.parent / "about.html"
     about_path.write_text(render_about(), encoding="utf-8")
+    prob_path = output.parent / "problematic.html"
+    prob_page = render_problematic(
+        problematic,
+        updated=datetime.now().astimezone().isoformat(timespec="seconds"),
+        db_size=db_size,
+        elapsed=time.monotonic() - start,
+        locations=locations,
+    )
+    prob_path.write_text(prob_page, encoding="utf-8")
 
     # Generate charger detail pages for problematic entries
     for r in problematic:
