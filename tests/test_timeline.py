@@ -57,9 +57,11 @@ def test_timeline_stats():
     assert first["chargers"] == 2
     assert first["charging"] == 1
     assert first["unavailable"] == 1
+    assert first["problematic"] == 0
 
     assert second["chargers"] == 2
     assert second["charging"] == 1
     assert second["unavailable"] == 0
+    assert second["problematic"] == 0
 
     conn.close()

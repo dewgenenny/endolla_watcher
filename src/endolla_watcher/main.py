@@ -42,6 +42,8 @@ def main() -> None:
     html = render(
         problematic,
         stats,
+        rule_counts={},
+        rules=None,
         updated=datetime.now().astimezone().isoformat(timespec="seconds"),
         elapsed=time.monotonic() - start,
         locations=locations,
