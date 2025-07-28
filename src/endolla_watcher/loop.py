@@ -36,14 +36,16 @@ def update_once(
     logger.debug("Updating report from db=%s", db)
     start = time.monotonic()
     conn = storage.connect(db)
-    problematic = storage.analyze_chargers(conn, rules)
+    problematic, rule_counts = storage.analyze_chargers(conn, rules)
     stats = storage.stats_from_db(conn)
-    history = storage.timeline_stats(conn)
+    history = storage.timeline_stats(conn, rules)
     db_size = db.stat().st_size / (1024 * 1024)
     html = render(
         problematic,
         stats,
         history,
+        rule_counts,
+        rules,
         updated=datetime.now().astimezone().isoformat(timespec="seconds"),
         db_size=db_size,
         elapsed=time.monotonic() - start,

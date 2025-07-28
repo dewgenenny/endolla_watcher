@@ -1,5 +1,5 @@
 import sqlite3
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Tuple
 from .rules import Rules
@@ -128,14 +128,22 @@ def _session_records(
 
 
 def _recent_status_history(
-    conn: sqlite3.Connection, since: datetime
+    conn: sqlite3.Connection,
+    since: datetime,
+    until: datetime | None = None,
 ) -> Dict[PortKey, List[Tuple[datetime, str]]]:
     """Return status history for each port since a given time."""
-    logger.debug("Fetching status history since %s", since)
-    cur = conn.execute(
-        "SELECT location_id, station_id, port_id, ts, status FROM port_status WHERE ts >= ? ORDER BY location_id, station_id, port_id, ts",
-        (since.isoformat(),),
+    logger.debug("Fetching status history since %s until %s", since, until)
+    params = [since.isoformat()]
+    query = (
+        "SELECT location_id, station_id, port_id, ts, status FROM port_status "
+        "WHERE ts >= ?"
     )
+    if until is not None:
+        query += " AND ts <= ?"
+        params.append(until.isoformat())
+    query += " ORDER BY location_id, station_id, port_id, ts"
+    cur = conn.execute(query, params)
     history: Dict[PortKey, List[Tuple[datetime, str]]] = {}
     for loc, sta, port, ts, status in cur:
         key = (loc, sta, port)
@@ -166,6 +174,7 @@ def analyze_recent(conn: sqlite3.Connection, days: int = 7, short_threshold: int
     logger.debug("Analyzing recent data since %s", since)
     sessions = recent_sessions(conn, since)
     problematic: List[Dict[str, Any]] = []
+    rule_counts: Dict[str, int] = {"unused": 0, "no_long": 0, "unavailable": 0}
     for (loc, sta, port), durs in sessions.items():
         if not durs:
             problematic.append(
@@ -199,16 +208,22 @@ def analyze_recent(conn: sqlite3.Connection, days: int = 7, short_threshold: int
     return problematic
 
 
-def analyze_chargers(conn: sqlite3.Connection, rules: Rules | None = None) -> List[Dict[str, Any]]:
+def analyze_chargers(
+    conn: sqlite3.Connection,
+    rules: Rules | None = None,
+    *,
+    now: datetime | None = None,
+) -> tuple[list[Dict[str, Any]], Dict[str, int]]:
     """Classify chargers as problematic based on configurable rules."""
     if rules is None:
         rules = Rules()
 
-    now = datetime.now().astimezone()
+    if now is None:
+        now = datetime.now().astimezone()
     earliest = now - timedelta(
         days=max(rules.unused_days, rules.long_session_days, rules.unavailable_hours / 24)
     )
-    history = _recent_status_history(conn, earliest)
+    history = _recent_status_history(conn, earliest, now)
 
     # Organize data per station
     stations: Dict[Tuple[str | None, str | None], Dict[str | None, List[Tuple[datetime, str]]]] = {}
@@ -216,6 +231,7 @@ def analyze_chargers(conn: sqlite3.Connection, rules: Rules | None = None) -> Li
         stations.setdefault((loc, sta), {})[port] = events
 
     problematic: List[Dict[str, Any]] = []
+    rule_counts: Dict[str, int] = {"unused": 0, "no_long": 0, "unavailable": 0}
     for (loc, sta), ports in stations.items():
         reasons: List[str] = []
 
@@ -232,6 +248,7 @@ def analyze_chargers(conn: sqlite3.Connection, rules: Rules | None = None) -> Li
             )
             if not used_recently:
                 reasons.append(f"unused > {rules.unused_days}d")
+                rule_counts["unused"] += 1
         else:
             logger.debug(
                 "Skipping unused rule for %s/%s due to insufficient history", loc, sta
@@ -251,6 +268,7 @@ def analyze_chargers(conn: sqlite3.Connection, rules: Rules | None = None) -> Li
                 reasons.append(
                     f"no session >= {rules.long_session_min}min in {rules.long_session_days}d"
                 )
+                rule_counts["no_long"] += 1
         else:
             logger.debug(
                 "Skipping long session rule for %s/%s due to insufficient history", loc, sta
@@ -268,6 +286,7 @@ def analyze_chargers(conn: sqlite3.Connection, rules: Rules | None = None) -> Li
             )
             if all_unavail and ports:
                 reasons.append(f"unavailable > {rules.unavailable_hours}h")
+                rule_counts["unavailable"] += 1
         else:
             logger.debug(
                 "Skipping unavailable rule for %s/%s due to insufficient history", loc, sta
@@ -287,7 +306,7 @@ def analyze_chargers(conn: sqlite3.Connection, rules: Rules | None = None) -> Li
             logger.debug("Charger %s/%s is healthy", loc, sta)
 
     logger.debug("Identified %d problematic chargers", len(problematic))
-    return problematic
+    return problematic, rule_counts
 
 
 def _latest_records(conn: sqlite3.Connection) -> List[Dict[str, Any]]:
@@ -360,7 +379,9 @@ def stats_from_db(conn: sqlite3.Connection) -> Dict[str, float]:
     return stats
 
 
-def timeline_stats(conn: sqlite3.Connection) -> List[Dict[str, Any]]:
+def timeline_stats(
+    conn: sqlite3.Connection, rules: Rules | None = None
+) -> List[Dict[str, Any]]:
     """Return aggregated statistics every 15 minutes for the past week."""
     placeholders = ",".join("?" for _ in UNAVAILABLE_STATUSES)
     since = datetime.now().astimezone() - timedelta(days=7)
@@ -395,15 +416,22 @@ def timeline_stats(conn: sqlite3.Connection) -> List[Dict[str, Any]]:
         """,
         (since.isoformat(), *UNAVAILABLE_STATUSES),
     )
-    result = [
-        {
-            "ts": slot,
-            "chargers": chargers,
-            "unavailable": unavailable,
-            "charging": charging,
-        }
-        for slot, chargers, unavailable, charging in cur
+    slots = [
+        (slot, chargers, unavailable, charging) for slot, chargers, unavailable, charging in cur
     ]
+    result = []
+    for slot, chargers, unavailable, charging in slots:
+        slot_ts = datetime.fromisoformat(slot).replace(tzinfo=timezone.utc)
+        problematic, _ = analyze_chargers(conn, rules, now=slot_ts)
+        result.append(
+            {
+                "ts": slot,
+                "chargers": chargers,
+                "unavailable": unavailable,
+                "charging": charging,
+                "problematic": len(problematic),
+            }
+        )
     logger.debug("Loaded timeline with %d points", len(result))
     return result
 

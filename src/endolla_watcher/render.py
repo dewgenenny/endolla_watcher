@@ -1,4 +1,5 @@
 from typing import List, Dict, Any
+from .rules import Rules
 import json
 import logging
 
@@ -42,6 +43,12 @@ INDEX_TEMPLATE = """
     <li class="list-group-item">Charges today: {charges_today}</li>
     <li class="list-group-item">Short sessions (<5 min): {short_sessions}</li>
     <li class="list-group-item">Avg session (24h): {avg_session_min:.1f} min</li>
+</ul>
+<h2 class="mt-4">Rule Summary</h2>
+<ul class="list-group mb-4">
+    <li class="list-group-item">Unused > {unused_days}d: {unused}</li>
+    <li class="list-group-item">No session >= {long_session_min}min in {long_session_days}d: {no_long}</li>
+    <li class="list-group-item">Unavailable > {unavailable_hours}h: {unavailable_rule}</li>
 </ul>
 <div class="mb-4">
     <canvas id="historyChart" height="80"></canvas>
@@ -122,6 +129,8 @@ def render(
     problematic: List[Dict[str, Any]],
     stats: Dict[str, float] | None = None,
     history: List[Dict[str, Any]] | None = None,
+    rule_counts: Dict[str, int] | None = None,
+    rules: Rules | None = None,
     updated: str | None = None,
     db_size: float | None = None,
     elapsed: float | None = None,
@@ -139,6 +148,8 @@ def render(
             "short_sessions": 0,
             "avg_session_min": 0.0,
         }
+    if rule_counts is None:
+        rule_counts = {"unused": 0, "no_long": 0, "unavailable": 0}
     history_js = ""
     if history:
         history_js = (
@@ -150,6 +161,8 @@ def render(
             + "new Chart(ctx, {type: 'line', data: {labels, datasets: ["
             + "{label: 'Unavailable', data: historyData.map(d => d.unavailable),"
             + "borderColor: '#dc3545', backgroundColor: 'rgba(220,53,69,0.3)', fill: true, stack: 'usage'},"
+            + "{label: 'Problematic', data: historyData.map(d => d.problematic),"
+            + "borderColor: '#fd7e14', backgroundColor: 'rgba(253,126,20,0.3)', fill: true, stack: 'usage'},"
             + "{label: 'Charging', data: historyData.map(d => d.charging),"
             + "borderColor: '#198754', backgroundColor: 'rgba(25,135,84,0.3)', fill: true, stack: 'usage'}]},"
             + "options: {scales: {x: {type: 'time', time: {unit: 'day'}}, y: {beginAtZero: true, stacked: true}}}});"
@@ -181,6 +194,13 @@ def render(
         updated=updated or "N/A",
         db_size=(db_size if db_size is not None else 0.0),
         elapsed=(elapsed if elapsed is not None else 0.0),
+        unused=rule_counts.get("unused", 0),
+        no_long=rule_counts.get("no_long", 0),
+        unavailable_rule=rule_counts.get("unavailable", 0),
+        unused_days=(rules.unused_days if rules else 0),
+        long_session_min=(rules.long_session_min if rules else 0),
+        long_session_days=(rules.long_session_days if rules else 0),
+        unavailable_hours=(rules.unavailable_hours if rules else 0),
         **stats,
     )
     logger.debug("Generated HTML with %d rows", len(rows))
