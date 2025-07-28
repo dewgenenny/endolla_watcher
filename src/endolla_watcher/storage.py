@@ -563,3 +563,29 @@ def charger_sessions(
         "Loaded %d session lists for charger %s/%s", len(result), location_id, station_id
     )
     return result
+
+
+def sessions_per_day(
+    conn: sqlite3.Connection, days: int = 7
+) -> List[Dict[str, Any]]:
+    """Return number of charging sessions started each day."""
+    since = datetime.now().astimezone() - timedelta(days=days)
+    cur = conn.execute(
+        "SELECT location_id, station_id, port_id, ts, status FROM port_status WHERE ts >= ? ORDER BY location_id, station_id, port_id, ts",
+        (since.isoformat(),),
+    )
+    history: Dict[PortKey, List[Tuple[datetime, str]]] = {}
+    for loc, sta, port, ts, status in cur:
+        history.setdefault((loc, sta, port), []).append((datetime.fromisoformat(ts), status))
+
+    counts: Dict[str, int] = {}
+    for events in history.values():
+        for start, _, _ in _session_records(events):
+            if start >= since:
+                day = start.date().isoformat()
+                counts[day] = counts.get(day, 0) + 1
+    result = []
+    for i in range(days - 1, -1, -1):
+        day = (datetime.now().astimezone() - timedelta(days=i)).date().isoformat()
+        result.append({"day": day, "sessions": counts.get(day, 0)})
+    return result

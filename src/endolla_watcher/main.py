@@ -6,7 +6,7 @@ from pathlib import Path
 
 from .data import fetch_data, fetch_locations, parse_usage
 from .analyze import analyze
-from .render import render, render_about
+from .render import render, render_about, render_problematic
 from .stats import from_records
 from .logging_utils import setup_logging
 
@@ -42,6 +42,8 @@ def main() -> None:
     html = render(
         problematic,
         stats,
+        history=None,
+        daily=None,
         rule_counts={},
         rules=None,
         updated=datetime.now().astimezone().isoformat(timespec="seconds"),
@@ -53,6 +55,14 @@ def main() -> None:
     # Write the about page alongside the main report
     about_path = args.output.parent / "about.html"
     about_path.write_text(render_about(), encoding="utf-8")
+    prob_path = args.output.parent / "problematic.html"
+    prob_page = render_problematic(
+        problematic,
+        updated=datetime.now().astimezone().isoformat(timespec="seconds"),
+        elapsed=time.monotonic() - start,
+        locations=locations,
+    )
+    prob_path.write_text(prob_page, encoding="utf-8")
     logger.info("Wrote report to %s", args.output)
 
 
