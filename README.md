@@ -13,7 +13,7 @@ pip install -r requirements.txt
 pip install -e .
 python -m endolla_watcher.main --file endolla.json --output site/index.html
 python -m endolla_watcher.loop --fetch-interval 60 --update-interval 3600 \
-    --db endolla.db --unused-days 4 --long-session-days 2 \
+    --db endolla.db --unused-days 7 --long-session-days 2 \
     --long-session-min 5 --unavailable-hours 24
 ```
 

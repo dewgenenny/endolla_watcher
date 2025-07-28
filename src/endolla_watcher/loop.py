@@ -94,7 +94,7 @@ def main() -> None:
         default=3600,
         help="Seconds between report updates",
     )
-    parser.add_argument("--unused-days", type=int, default=4)
+    parser.add_argument("--unused-days", type=int, default=7)
     parser.add_argument("--long-session-days", type=int, default=2)
     parser.add_argument("--long-session-min", type=int, default=5)
     parser.add_argument("--unavailable-hours", type=int, default=24)

@@ -349,6 +349,32 @@ def _all_history(conn: sqlite3.Connection) -> Dict[PortKey, List[Tuple[datetime,
     return history
 
 
+def _count_unused_chargers(
+    conn: sqlite3.Connection, days: int, now: datetime
+) -> int:
+    """Return the number of chargers unused for more than ``days``."""
+    earliest = now - timedelta(days=days)
+    history = _recent_status_history(conn, earliest, now)
+
+    stations: Dict[Tuple[str | None, str | None], Dict[str | None, List[Tuple[datetime, str]]]] = {}
+    for (loc, sta, port), events in history.items():
+        stations.setdefault((loc, sta), {})[port] = events
+
+    count = 0
+    for ports in stations.values():
+        earliest_ts = min(ts for events in ports.values() for ts, _ in events)
+        history_span = now - earliest_ts
+        if history_span >= timedelta(days=days):
+            since_unused = now - timedelta(days=days)
+            used_recently = any(
+                any(status == "IN_USE" and ts >= since_unused for ts, status in events)
+                for events in ports.values()
+            )
+            if not used_recently:
+                count += 1
+    return count
+
+
 def stats_from_db(conn: sqlite3.Connection) -> Dict[str, float]:
     """Compute statistics based on data stored in the database."""
     latest = _latest_records(conn)
@@ -430,6 +456,9 @@ def timeline_stats(
                 "unavailable": unavailable,
                 "charging": charging,
                 "problematic": len(problematic),
+                "unused_1": _count_unused_chargers(conn, 1, slot_ts),
+                "unused_2": _count_unused_chargers(conn, 2, slot_ts),
+                "unused_7": _count_unused_chargers(conn, 7, slot_ts),
             }
         )
     logger.debug("Loaded timeline with %d points", len(result))
