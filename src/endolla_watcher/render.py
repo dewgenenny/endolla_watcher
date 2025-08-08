@@ -11,7 +11,10 @@ NAVBAR = """
 <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
   <div class="container-fluid">
     <a class="navbar-brand" href="index.html">Endolla Watcher</a>
-    <div class="collapse navbar-collapse">
+    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+    <div class="collapse navbar-collapse" id="navbarNav">
       <ul class="navbar-nav ms-auto">
         <li class="nav-item"><a class="nav-link" href="problematic.html">Problematic</a></li>
         <li class="nav-item"><a class="nav-link" href="about.html">About</a></li>
@@ -74,6 +77,7 @@ INDEX_TEMPLATE = """
     <p>Processed in {elapsed:.2f} s</p>
 </div>
 </div>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
 """
@@ -101,6 +105,7 @@ CHARGER_TEMPLATE = """
 </table>
 <p><a href="index.html">Back to index</a></p>
 </div>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
 """
@@ -135,6 +140,7 @@ PROBLEMATIC_TEMPLATE = """
     <p>Processed in {elapsed:.2f} s</p>
 </div>
 </div>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
 """
@@ -155,6 +161,7 @@ ABOUT_TEMPLATE = """
 <p>Endolla Watcher keeps an eye on Barcelona's public charging network. It highlights stations that appear inactive or unavailable so issues can be resolved quickly.</p>
 <p>This project is built and maintained by <strong>dewgenenny</strong>, an electric vehicle and data enthusiast eager to optimise infrastructure through better information.</p>
 </div>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
 """
