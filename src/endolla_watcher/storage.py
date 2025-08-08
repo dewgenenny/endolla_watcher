@@ -58,40 +58,58 @@ def prune_old_data(conn: sqlite3.Connection, max_age_days: int = MAX_DATA_AGE_DA
     logger.debug("Pruning data older than %s", cutoff)
     conn.execute("DELETE FROM port_status WHERE ts < ?", (cutoff.isoformat(),))
     conn.commit()
+    # Reclaim space from deleted rows
+    conn.execute("PRAGMA incremental_vacuum")
 
 
 def connect(path: Path) -> sqlite3.Connection:
     """Open connection and ensure schema and retention policy."""
     logger.debug("Connecting to database %s", path)
     conn = sqlite3.connect(path)
+    # Enable incremental auto_vacuum so deleted rows free space over time
+    conn.execute("PRAGMA auto_vacuum = INCREMENTAL")
     _apply_migrations(conn)
     prune_old_data(conn)
     return conn
 
 
 def save_snapshot(conn: sqlite3.Connection, records: Iterable[Dict[str, Any]], ts: datetime | None = None) -> None:
-    """Persist a snapshot of all port statuses."""
+    """Persist only status changes for each port."""
     if ts is None:
         ts = datetime.now().astimezone()
     logger.debug("Saving snapshot at %s", ts)
-    rows = [
-        (
-            ts.isoformat(),
-            r.get("location_id"),
-            r.get("station_id"),
-            r.get("port_id"),
-            r.get("status"),
-            r.get("last_updated"),
+    rows = []
+    for r in records:
+        loc = r.get("location_id")
+        sta = r.get("station_id")
+        port = r.get("port_id")
+        status = r.get("status")
+        last = conn.execute(
+            "SELECT status FROM port_status WHERE location_id=? AND station_id=? AND port_id=? ORDER BY ts DESC LIMIT 1",
+            (loc, sta, port),
+        ).fetchone()
+        if last and last[0] == status:
+            continue
+        rows.append(
+            (
+                ts.isoformat(),
+                loc,
+                sta,
+                port,
+                status,
+                r.get("last_updated"),
+            )
         )
-        for r in records
-    ]
-    conn.executemany(
-        "INSERT INTO port_status (ts, location_id, station_id, port_id, status, last_updated) VALUES (?, ?, ?, ?, ?, ?)",
-        rows,
-    )
-    conn.commit()
+    if rows:
+        conn.executemany(
+            "INSERT INTO port_status (ts, location_id, station_id, port_id, status, last_updated) VALUES (?, ?, ?, ?, ?, ?)",
+            rows,
+        )
+        conn.commit()
+        logger.debug("Saved snapshot with %d rows", len(rows))
+    else:
+        logger.debug("No status changes to save")
     prune_old_data(conn)
-    logger.debug("Saved snapshot with %d rows", len(rows))
 
 
 def _session_durations(statuses: List[Tuple[datetime, str]]) -> List[float]:
@@ -292,13 +310,18 @@ def analyze_chargers(
         # Rule 3: all ports unavailable for continuous hours
         if history_span >= timedelta(hours=rules.unavailable_hours):
             since_unavail = now - timedelta(hours=rules.unavailable_hours)
-            all_unavail = all(
-                all(
-                    status in UNAVAILABLE_STATUSES for ts, status in events if ts >= since_unavail
-                )
-                and any(ts >= since_unavail for ts, _ in events)
-                for events in ports.values()
-            )
+            all_unavail = True
+            for events in ports.values():
+                if not events:
+                    all_unavail = False
+                    break
+                last_status = events[-1][1]
+                if last_status not in UNAVAILABLE_STATUSES:
+                    all_unavail = False
+                    break
+                if any(ts >= since_unavail and st not in UNAVAILABLE_STATUSES for ts, st in events):
+                    all_unavail = False
+                    break
             if all_unavail and ports:
                 reasons.append(f"unavailable > {rules.unavailable_hours}h")
                 rule_counts["unavailable"] += 1
@@ -438,7 +461,6 @@ def timeline_stats(
     conn: sqlite3.Connection, rules: Rules | None = None
 ) -> List[Dict[str, Any]]:
     """Return aggregated statistics every 15 minutes for the past week."""
-    placeholders = ",".join("?" for _ in UNAVAILABLE_STATUSES)
     since = datetime.now().astimezone() - timedelta(days=7)
     if rules is None:
         rules = Rules()
@@ -451,52 +473,44 @@ def timeline_stats(
         conn,
         since - timedelta(days=history_span),
     )
-    cur = conn.execute(
-        f"""
-        WITH latest AS (
-            SELECT ps.location_id, ps.station_id, ps.port_id,
-                   datetime((CAST(strftime('%s', ps.ts) AS integer) / 900) * 900, 'unixepoch') AS slot,
-                   ps.status
-            FROM port_status ps
-            JOIN (
-                SELECT location_id, station_id, port_id,
-                       datetime((CAST(strftime('%s', ts) AS integer) / 900) * 900, 'unixepoch') AS slot,
-                       MAX(ts) AS max_ts
-                FROM port_status
-                WHERE ts >= ?
-                GROUP BY location_id, station_id, port_id, slot
-            ) l
-            ON ps.location_id = l.location_id
-            AND ps.station_id = l.station_id
-            AND ps.port_id = l.port_id
-            AND datetime((CAST(strftime('%s', ps.ts) AS integer) / 900) * 900, 'unixepoch') = l.slot
-            AND ps.ts = l.max_ts
+    slot_set = {
+        datetime.fromtimestamp(
+            (int(ts.timestamp()) // 900) * 900, tz=timezone.utc
         )
-        SELECT slot,
-               COUNT(*) AS chargers,
-               SUM(CASE WHEN status IN ({placeholders}) THEN 1 ELSE 0 END) AS unavailable,
-               SUM(CASE WHEN status = 'IN_USE' THEN 1 ELSE 0 END) AS charging
-        FROM latest
-        GROUP BY slot
-        ORDER BY slot
-        """,
-        (since.isoformat(), *UNAVAILABLE_STATUSES),
-    )
-    slots = [
-        (slot, chargers, unavailable, charging) for slot, chargers, unavailable, charging in cur
-    ]
-    result = []
-    for slot, chargers, unavailable, charging in slots:
-        slot_ts = datetime.fromisoformat(slot).replace(tzinfo=timezone.utc)
+        for events in full_history.values()
+        for ts, _ in events
+        if ts >= since
+    }
+    slots = sorted(slot_set)
+    result: List[Dict[str, Any]] = []
+    for slot_ts in slots:
+        slot_end = slot_ts + timedelta(minutes=15)
+        chargers = 0
+        unavailable = 0
+        charging = 0
+        for events in full_history.values():
+            status = None
+            for ts, st in events:
+                if ts <= slot_end:
+                    status = st
+                else:
+                    break
+            if status is None:
+                continue
+            chargers += 1
+            if status in UNAVAILABLE_STATUSES:
+                unavailable += 1
+            if status == "IN_USE":
+                charging += 1
         problematic, _ = analyze_chargers(
             conn,
             rules,
-            now=slot_ts,
+            now=slot_end,
             history=full_history,
         )
         result.append(
             {
-                "ts": slot,
+                "ts": slot_ts.isoformat(),
                 "chargers": chargers,
                 "unavailable": unavailable,
                 "charging": charging,
@@ -504,19 +518,19 @@ def timeline_stats(
                 "unused_1": _count_unused_chargers(
                     conn,
                     1,
-                    slot_ts,
+                    slot_end,
                     history=full_history,
                 ),
                 "unused_2": _count_unused_chargers(
                     conn,
                     2,
-                    slot_ts,
+                    slot_end,
                     history=full_history,
                 ),
                 "unused_7": _count_unused_chargers(
                     conn,
                     7,
-                    slot_ts,
+                    slot_end,
                     history=full_history,
                 ),
             }
