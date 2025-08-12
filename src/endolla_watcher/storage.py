@@ -73,6 +73,30 @@ def connect(path: Path) -> sqlite3.Connection:
     return conn
 
 
+def db_stats(conn: sqlite3.Connection) -> Dict[str, int]:
+    """Return basic statistics about the database."""
+    rows = conn.execute("SELECT COUNT(*) FROM port_status").fetchone()[0]
+    page_count = conn.execute("PRAGMA page_count").fetchone()[0]
+    page_size = conn.execute("PRAGMA page_size").fetchone()[0]
+    freelist = conn.execute("PRAGMA freelist_count").fetchone()[0]
+    stats = {
+        "rows": rows,
+        "page_count": page_count,
+        "page_size": page_size,
+        "freelist": freelist,
+        "size_bytes": page_count * page_size,
+    }
+    logger.debug("Database stats: %s", stats)
+    return stats
+
+
+def compress_db(conn: sqlite3.Connection) -> None:
+    """Run VACUUM to reclaim unused space and defragment the database."""
+    logger.info("Compressing database")
+    conn.execute("VACUUM")
+    conn.execute("PRAGMA optimize")
+
+
 def save_snapshot(conn: sqlite3.Connection, records: Iterable[Dict[str, Any]], ts: datetime | None = None) -> None:
     """Persist only status changes for each port."""
     if ts is None:

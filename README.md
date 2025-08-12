@@ -35,6 +35,14 @@ manually you can run:
 python -m endolla_watcher.migrate --db endolla.db
 ```
 
+To review the current size and reclaim unused space you can run:
+
+```
+python -m endolla_watcher.db --db endolla.db --compress
+```
+
+Omit `--compress` to only display basic database statistics.
+
 ## Docker
 
 ```
