@@ -15,7 +15,8 @@ customised with environment-specific overlays.
 * `pvc.yaml` – persistent volume claim that holds the SQLite database and the
   rendered static site content.
 * `deployment.yaml` – runs the watcher container with sensible defaults and the
-  required volume mount.
+  required volume mount. Update the container image reference if your GitHub
+  organisation or username differs from the default `ghcr.io/<owner>/endolla-watcher`.
 * `kustomization.yaml` – ties the manifests together for use with Kustomize.
 
 ## Preparing secrets
