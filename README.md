@@ -72,8 +72,15 @@ repository URL as shown above to enable automatic pushes.
 ## Automation
 
 A GitHub Actions workflow (`.github/workflows/docker.yml`) builds the Docker
-image and pushes it to Docker Hub. Configure the `DOCKERHUB_USERNAME` and
-`DOCKERHUB_TOKEN` secrets for authentication.
+image and publishes it to the GitHub Container Registry (GHCR) under
+`ghcr.io/<repository-owner>/endolla-watcher`. Authentication is handled via the
+repository's default `GITHUB_TOKEN`, so no additional secrets are required
+provided the workflow has `packages: write` permission. Consumers can pull the
+image with:
+
+```
+docker pull ghcr.io/<repository-owner>/endolla-watcher:latest
+```
 
 Run the Docker container on your own server and generate the site locally.
 Set the `GH_TOKEN` environment variable to a GitHub token with permission to
