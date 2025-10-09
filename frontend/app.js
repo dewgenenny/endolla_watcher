@@ -1,8 +1,53 @@
 const API_BASE = window.ENDOLLA_API_BASE || '/api';
+const DEFAULT_DAYS = 5;
+const MAX_DAYS = 90;
+
 const yearEl = document.getElementById('year');
 if (yearEl) {
   yearEl.textContent = new Date().getFullYear();
 }
+
+const chargesChartCanvas = document.getElementById('charges-chart');
+const chargesStatus = document.getElementById('charges-chart-status');
+const chargesTotalEl = document.getElementById('charges-total');
+const chargesRangeWindow = document.getElementById('charges-range-window');
+const chargesRangeSelect = document.getElementById('charges-range');
+
+let chargesChart;
+let dashboardController;
+
+const chargesGlowPlugin = {
+  id: 'chargesGlow',
+  beforeDatasetsDraw(chart, _args, pluginOptions) {
+    if (!pluginOptions?.enabled) {
+      return;
+    }
+    const ctx = chart.ctx;
+    ctx.save();
+    ctx.shadowColor = pluginOptions.color || 'rgba(14, 165, 233, 0.4)';
+    ctx.shadowBlur = pluginOptions.blur ?? 25;
+    ctx.shadowOffsetY = pluginOptions.offsetY ?? 16;
+    ctx.shadowOffsetX = 0;
+  },
+  afterDatasetsDraw(chart, _args, pluginOptions) {
+    if (!pluginOptions?.enabled) {
+      return;
+    }
+    chart.ctx.restore();
+  },
+};
+
+if (window.Chart) {
+  window.Chart.register(chargesGlowPlugin);
+}
+
+const clampDays = (value) => {
+  const parsed = Number.parseInt(value, 10);
+  if (Number.isNaN(parsed)) {
+    return DEFAULT_DAYS;
+  }
+  return Math.min(Math.max(parsed, 1), MAX_DAYS);
+};
 
 const formatNumber = (value) => {
   if (value === null || value === undefined) {
@@ -16,6 +61,59 @@ const formatMinutes = (value) => {
     return '–';
   }
   return `${value.toFixed(1)} min`;
+};
+
+const formatDate = (isoDate, { includeWeekday = true } = {}) => {
+  if (!isoDate) {
+    return '–';
+  }
+  const date = new Date(isoDate);
+  if (Number.isNaN(date)) {
+    return isoDate;
+  }
+  const options = {
+    month: 'short',
+    day: 'numeric',
+    ...(includeWeekday ? { weekday: 'short' } : {}),
+  };
+  const now = new Date();
+  if (date.getFullYear() !== now.getFullYear()) {
+    options.year = 'numeric';
+  }
+  return date.toLocaleDateString(undefined, options);
+};
+
+const formatRange = (startIso, endIso) => {
+  if (!startIso || !endIso) {
+    return null;
+  }
+  const start = new Date(startIso);
+  const end = new Date(endIso);
+  if (Number.isNaN(start) || Number.isNaN(end)) {
+    return null;
+  }
+  const now = new Date();
+  const startOptions = { month: 'short', day: 'numeric' };
+  const endOptions = { month: 'short', day: 'numeric' };
+  if (start.getFullYear() !== now.getFullYear() || start.getFullYear() !== end.getFullYear()) {
+    startOptions.year = 'numeric';
+  }
+  if (end.getFullYear() !== now.getFullYear() || start.getFullYear() !== end.getFullYear()) {
+    endOptions.year = 'numeric';
+  }
+  return `${start.toLocaleDateString(undefined, startOptions)} – ${end.toLocaleDateString(undefined, endOptions)}`;
+};
+
+const setChartStatus = (message) => {
+  if (!chargesStatus) {
+    return;
+  }
+  if (!message) {
+    chargesStatus.hidden = true;
+    return;
+  }
+  chargesStatus.textContent = message;
+  chargesStatus.hidden = false;
 };
 
 const updateSummary = (stats, info) => {
@@ -87,12 +185,171 @@ const updateDaily = (daily) => {
   (daily || []).forEach((row) => {
     const tr = document.createElement('tr');
     const day = document.createElement('td');
-    day.textContent = row.day;
+    day.textContent = formatDate(row.day);
     const sessions = document.createElement('td');
     sessions.textContent = formatNumber(row.sessions);
     tr.append(day, sessions);
     tbody.appendChild(tr);
   });
+};
+
+const updateChargesSummary = (daily) => {
+  if (chargesTotalEl) {
+    const total = (daily || []).reduce((acc, entry) => acc + (entry?.sessions ?? 0), 0);
+    chargesTotalEl.textContent = formatNumber(total);
+  }
+  if (chargesRangeWindow) {
+    if (!daily || daily.length === 0) {
+      chargesRangeWindow.textContent = 'in this period';
+      return;
+    }
+    if (daily.length === 1) {
+      chargesRangeWindow.textContent = `on ${formatDate(daily[0].day)}`;
+      return;
+    }
+    const start = daily[0]?.day;
+    const end = daily[daily.length - 1]?.day;
+    const rangeText = formatRange(start, end);
+    chargesRangeWindow.textContent = rangeText ? `between ${rangeText}` : 'in this period';
+  }
+};
+
+const updateChargesChart = (daily) => {
+  const timeline = (daily || []).map((entry) => ({
+    day: entry?.day,
+    sessions: Number.isFinite(entry?.sessions) ? entry.sessions : 0,
+  }));
+
+  updateChargesSummary(timeline);
+
+  if (!chargesChartCanvas) {
+    return;
+  }
+
+  if (!window.Chart) {
+    setChartStatus('Chart library failed to load.');
+    return;
+  }
+
+  if (timeline.length === 0) {
+    if (chargesChart) {
+      chargesChart.destroy();
+      chargesChart = undefined;
+    }
+    setChartStatus('No charging activity recorded yet.');
+    return;
+  }
+
+  const labels = timeline.map((entry) => formatDate(entry.day, { includeWeekday: false }));
+  const values = timeline.map((entry) => entry.sessions);
+
+  if (chargesChart) {
+    chargesChart.data.labels = labels;
+    const dataset = chargesChart.data.datasets[0];
+    dataset.data = values;
+    dataset.borderColor = '#0ea5e9';
+    dataset.borderWidth = 3;
+    dataset.tension = 0.45;
+    dataset.fill = 'origin';
+    dataset.pointBackgroundColor = '#38bdf8';
+    dataset.pointBorderWidth = 0;
+    dataset.pointRadius = 5;
+    dataset.pointHoverRadius = 7;
+    chargesChart.$timeline = timeline;
+    chargesChart.update();
+  } else {
+    const context = chargesChartCanvas.getContext('2d');
+    chargesChart = new window.Chart(context, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [
+          {
+            label: 'Charges',
+            data: values,
+            borderColor: '#0ea5e9',
+            borderWidth: 3,
+            tension: 0.45,
+            fill: 'origin',
+            backgroundColor(context) {
+              const { chart } = context;
+              const { ctx, chartArea } = chart;
+              if (!chartArea) {
+                return null;
+              }
+              const gradient = ctx.createLinearGradient(0, chartArea.bottom, 0, chartArea.top);
+              gradient.addColorStop(0, 'rgba(14, 165, 233, 0)');
+              gradient.addColorStop(1, 'rgba(14, 165, 233, 0.45)');
+              return gradient;
+            },
+            pointBackgroundColor: '#38bdf8',
+            pointBorderWidth: 0,
+            pointRadius: 5,
+            pointHoverRadius: 7,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: false,
+          tooltip: {
+            backgroundColor: '#0f172a',
+            titleColor: '#f8fafc',
+            bodyColor: '#e2e8f0',
+            borderWidth: 0,
+            padding: 12,
+            displayColors: false,
+            callbacks: {
+              title(items) {
+                if (!items?.length) {
+                  return '';
+                }
+                const { chart, dataIndex } = items[0];
+                const timelineForChart = chart.$timeline || [];
+                const iso = timelineForChart[dataIndex]?.day;
+                return formatDate(iso);
+              },
+              label(item) {
+                return `${formatNumber(item.parsed.y)} charges`;
+              },
+            },
+          },
+          chargesGlow: {
+            enabled: true,
+          },
+        },
+        scales: {
+          x: {
+            grid: {
+              display: false,
+            },
+            ticks: {
+              color: '#475569',
+              maxRotation: 0,
+              autoSkip: true,
+            },
+          },
+          y: {
+            beginAtZero: true,
+            grid: {
+              color: 'rgba(148, 163, 184, 0.2)',
+              drawTicks: false,
+            },
+            ticks: {
+              color: '#475569',
+              padding: 8,
+              precision: 0,
+            },
+          },
+        },
+      },
+    });
+  }
+
+  chargesChart.$timeline = timeline;
+  setChartStatus(null);
 };
 
 const updateProblematic = (problematic, locations) => {
@@ -146,20 +403,51 @@ const showError = (error) => {
   }
 };
 
-const loadDashboard = async () => {
+const loadDashboard = async (days = DEFAULT_DAYS) => {
+  const targetDays = clampDays(days);
+  if (chargesRangeSelect && chargesRangeSelect.value !== String(targetDays)) {
+    chargesRangeSelect.value = String(targetDays);
+  }
+  if (dashboardController) {
+    dashboardController.abort();
+  }
+  const controller = new AbortController();
+  dashboardController = controller;
   try {
-    const response = await fetch(`${API_BASE}/dashboard`);
+    setChartStatus('Loading charging trend…');
+    const params = new URLSearchParams({ days: targetDays.toString() });
+    const response = await fetch(`${API_BASE}/dashboard?${params.toString()}`, {
+      signal: controller.signal,
+    });
     if (!response.ok) {
       throw new Error(`Backend returned ${response.status}`);
     }
     const data = await response.json();
+    if (dashboardController !== controller) {
+      return;
+    }
     updateSummary(data.stats, data);
     updateRules(data.rules, data.rule_counts);
     updateDaily(data.daily);
+    updateChargesChart(data.daily);
     updateProblematic(data.problematic, data.locations);
   } catch (error) {
+    if (error.name === 'AbortError') {
+      return;
+    }
+    setChartStatus('Unable to display charging trend.');
     showError(error);
+  } finally {
+    if (dashboardController === controller) {
+      dashboardController = undefined;
+    }
   }
 };
 
-loadDashboard();
+if (chargesRangeSelect) {
+  chargesRangeSelect.addEventListener('change', (event) => {
+    loadDashboard(event.target.value);
+  });
+}
+
+loadDashboard(DEFAULT_DAYS);

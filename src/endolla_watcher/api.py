@@ -9,7 +9,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
 from .data import fetch_locations
@@ -135,13 +135,17 @@ def _latest_snapshot(conn) -> str | None:
     return None
 
 
-def _build_dashboard(settings: Settings, locations: Dict[str, Dict[str, float]]) -> Dict[str, Any]:
+def _build_dashboard(
+    settings: Settings,
+    locations: Dict[str, Dict[str, float]],
+    daily_days: int,
+) -> Dict[str, Any]:
     conn = _connect_db(settings)
     try:
         problematic, rule_counts = storage.analyze_chargers(conn, settings.rules)
         stats = storage.stats_from_db(conn)
         history = storage.timeline_stats(conn, settings.rules)
-        daily = storage.sessions_per_day(conn)
+        daily = storage.sessions_per_day(conn, days=daily_days)
         db_stats = storage.db_stats(conn)
         updated = _latest_snapshot(conn)
     finally:
@@ -213,10 +217,10 @@ async def healthz() -> Dict[str, Any]:
 
 
 @app.get("/api/dashboard")
-async def dashboard() -> Dict[str, Any]:
+async def dashboard(days: int = Query(5, ge=1, le=90)) -> Dict[str, Any]:
     settings = _require_settings()
     locations: Dict[str, Dict[str, float]] = getattr(app.state, "locations", {})
-    return await asyncio.to_thread(_build_dashboard, settings, locations)
+    return await asyncio.to_thread(_build_dashboard, settings, locations, days)
 
 
 @app.post("/api/refresh", status_code=202)

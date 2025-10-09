@@ -48,6 +48,28 @@
       <div class="meta" id="summary-meta"></div>
     </section>
 
+    <section class="charges-insight" aria-labelledby="charges-heading">
+      <div class="section-header">
+        <div class="section-title">
+          <h2 id="charges-heading">Charging Momentum</h2>
+          <p class="chart-subtitle"><span id="charges-total">–</span> charges <span id="charges-range-window">in this period</span></p>
+        </div>
+        <label class="range-select" for="charges-range">
+          Range
+          <select id="charges-range" name="charges-range">
+            <option value="5" selected>Last 5 days</option>
+            <option value="10">Last 10 days</option>
+            <option value="15">Last 15 days</option>
+            <option value="30">Last 30 days</option>
+          </select>
+        </label>
+      </div>
+      <div class="chart-card">
+        <canvas id="charges-chart" role="img" aria-label="Line chart showing daily charging sessions"></canvas>
+        <div id="charges-chart-status" class="chart-status" hidden>Loading charging trend…</div>
+      </div>
+    </section>
+
     <section class="rules">
       <h2>Rule Summary</h2>
       <ul id="rule-summary" class="rule-list"></ul>
@@ -91,6 +113,7 @@
       <small id="last-updated"></small>
     </div>
   </footer>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.5/dist/chart.umd.min.js"></script>
   <script src="config.js"></script>
   <script type="module" src="app.js"></script>
 </body>
