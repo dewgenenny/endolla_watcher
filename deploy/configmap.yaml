@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: endolla-watcher-config
+  namespace: endolla-watcher
+data:
+  GH_NAME: "Endolla Watcher"
+  GH_EMAIL: "watcher@example.com"
+  REPO_URL: "https://github.com/you/endolla-watcher-site.git"
