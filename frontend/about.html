@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>About &ndash; Endolla Watcher</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="container">
+      <h1>Endolla Watcher</h1>
+      <nav>
+        <a href="index.html">Dashboard</a>
+        <a href="about.html" aria-current="page">About</a>
+      </nav>
+    </div>
+  </header>
+  <main class="container">
+    <article class="content">
+      <h2>About</h2>
+      <p>
+        Endolla Watcher keeps an eye on Barcelona's public charging network. It highlights stations that appear inactive
+        or unavailable so issues can be resolved quickly.
+      </p>
+      <p>
+        The dashboard is powered by a small Python backend that continuously ingests the Endolla open data feed and exposes
+        a JSON API. This static site consumes that API to render live statistics without the need for GitHub Pages.
+      </p>
+      <p>
+        Deployments are managed through Argo CD. The backend and frontend run as independent workloads to make scaling and
+        upgrades straightforward.
+      </p>
+    </article>
+  </main>
+  <footer class="site-footer">
+    <div class="container">
+      <small>&copy; <span id="year"></span> Endolla Watcher</small>
+    </div>
+  </footer>
+  <script src="config.js"></script>
+  <script>document.getElementById("year").textContent = new Date().getFullYear();</script>
+</body>
+</html>
