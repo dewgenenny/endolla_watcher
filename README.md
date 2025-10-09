@@ -81,3 +81,14 @@ push to the repository and provide the repository URL via `REPO_URL`. When the
 container is started with the `--push-site` flag, the site will be committed and
 pushed to the `gh-pages` branch automatically after each update interval.
 The commit author can be configured with `GH_NAME` and `GH_EMAIL`.
+
+## Argo CD deployment
+
+Kubernetes manifests suitable for Argo CD live under the `deploy/` directory.
+They package the watcher container as a single-replica deployment backed by a
+persistent volume claim so the SQLite database and rendered site survive pod
+restarts. The manifests are managed via Kustomize and can be synchronised by
+Argo CD using the example application specification in `argocd/application.yaml`.
+Update the ConfigMap with your Git repository URL and commit author details,
+add a GitHub token to the accompanying secret, then apply the Argo CD
+application to roll out the watcher in your cluster.
