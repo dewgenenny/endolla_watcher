@@ -1,35 +1,57 @@
 # Endolla Watcher
 
-This project analyses the Barcelona Endolla open data feed to highlight charging
-ports that appear unused or have very short sessions. The results are published
-as a GitHub Pages site.
+Endolla Watcher analyses the Barcelona Endolla open data feed to highlight
+charging ports that appear unused, experience only short sessions or are marked
+unavailable for extended periods. The project now ships as two deployable
+components: a Python backend that ingests data and exposes a JSON API, and a
+lightweight frontend that renders the dashboard in the browser.
 
 ## Development
+
+Create a virtual environment and install the project in editable mode to work on
+the backend:
 
 ```
 python -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 pip install -e .
+```
+
+Start the FastAPI backend with uvicorn. The example below stores the SQLite
+database in the repository directory and disables the fetch loop so you can feed
+fixture data manually during development:
+
+```
+ENDOLLA_DB_PATH=./endolla.db ENDOLLA_AUTO_FETCH=0 uvicorn endolla_watcher.api:app --reload
+```
+
+You can still generate static reports for debugging with the legacy CLI tools:
+
+```
 python -m endolla_watcher.main --file endolla.json --output site/index.html
 python -m endolla_watcher.loop --fetch-interval 60 --update-interval 3600 \
     --db endolla.db --unused-days 7 --long-session-days 2 \
     --long-session-min 5 --unavailable-hours 24
 ```
 
-The site can then be served from the `site/` directory. It now features a small
-Bootstrap-based theme, a weekly history graph, the average charging time over
-the last 24 hours, the number of short charging sessions and an `about.html`
-page with project details. Problematic chargers link to individual pages
-showing their most recent charging sessions.
+The frontend lives under `frontend/` and is plain HTML/CSS/JS. Serve it with any
+static web server during development:
+
+```
+python -m http.server --directory frontend 8080
+```
+
+Set `window.ENDOLLA_API_BASE` in your browser console if you need to point the
+frontend at a remote backend while developing locally.
 
 ## Database
 
-Snapshots are stored in a SQLite database. Old records are automatically
-pruned so the database only keeps the last four weeks of history. The
-application checks the schema version when it opens the database and applies
-any pending migrations automatically. If you prefer to upgrade a database
-manually you can run:
+Snapshots are stored in a SQLite database. Old records are automatically pruned
+so the database only keeps the last four weeks of history. The application
+checks the schema version when it opens the database and applies any pending
+migrations automatically. If you prefer to upgrade a database manually you can
+run:
 
 ```
 python -m endolla_watcher.migrate --db endolla.db
@@ -43,59 +65,45 @@ python -m endolla_watcher.db --db endolla.db --compress
 
 Omit `--compress` to only display basic database statistics.
 
-## Docker
+## Containers
+
+Two containers are published from this repository:
+
+* **Backend:** `docker build -t endolla-watcher-backend .` produces the FastAPI
+  service. Environment variables listed in `deploy/backend-configmap.yaml`
+  control fetch cadence and rule thresholds.
+* **Frontend:** `docker build -t endolla-watcher-frontend frontend/` builds a
+  static NGINX image that serves the dashboard assets.
+
+Run the backend locally with persistent storage mounted at `/data` to keep the
+SQLite database between restarts:
 
 ```
-docker build -t endolla-watcher .
-docker run -v $(pwd)/endolla.db:/data/endolla.db \
-           -v $(pwd)/site:/data/site \
-           -e GH_TOKEN=YOURTOKEN \
-           -e REPO_URL=https://github.com/you/repo.git \
-           -e GH_NAME="Your Name" \
-           -e GH_EMAIL=you@example.com \
-           endolla-watcher \
-           --fetch-interval 300 --update-interval 3600 \
-           --push-site
+docker run -p 8000:8000 \
+           -e ENDOLLA_DB_PATH=/data/endolla.db \
+           -v $(pwd)/data:/data \
+           endolla-watcher-backend
 ```
 
-The entrypoint fetches the dataset from the public API and sets the `--output`
-and `--db` paths under `/data`. Any arguments provided when running the image
-are appended to those defaults, so you only need to specify the options you wish
-to change, such as the fetch interval or `--push-site`. To analyse a specific
-dataset file instead of the live data, start the container with
-`--file /path/to/file`.
-
-The image contains `git` and the `push_site.py` helper so updates can be
-published directly from within the container. Provide the GitHub token and
-repository URL as shown above to enable automatic pushes.
-
-## Automation
-
-A GitHub Actions workflow (`.github/workflows/docker.yml`) builds the Docker
-image and publishes it to the GitHub Container Registry (GHCR) under
-`ghcr.io/<repository-owner>/endolla-watcher`. Authentication is handled via the
-repository's default `GITHUB_TOKEN`, so no additional secrets are required
-provided the workflow has `packages: write` permission. Consumers can pull the
-image with:
+Serve the frontend alongside it with:
 
 ```
-docker pull ghcr.io/<repository-owner>/endolla-watcher:latest
+docker run -p 8080:80 endolla-watcher-frontend
 ```
 
-Run the Docker container on your own server and generate the site locally.
-Set the `GH_TOKEN` environment variable to a GitHub token with permission to
-push to the repository and provide the repository URL via `REPO_URL`. When the
-container is started with the `--push-site` flag, the site will be committed and
-pushed to the `gh-pages` branch automatically after each update interval.
-The commit author can be configured with `GH_NAME` and `GH_EMAIL`.
+Configure your reverse proxy so that `/api` traffic is forwarded to the backend
+while other paths are served by the frontend container.
 
 ## Argo CD deployment
 
 Kubernetes manifests suitable for Argo CD live under the `deploy/` directory.
-They package the watcher container as a single-replica deployment backed by a
-persistent volume claim so the SQLite database and rendered site survive pod
-restarts. The manifests are managed via Kustomize and can be synchronised by
-Argo CD using the example application specification in `argocd/application.yaml`.
-Update the ConfigMap with your Git repository URL and commit author details,
-add a GitHub token to the accompanying secret, then apply the Argo CD
-application to roll out the watcher in your cluster.
+They provision separate deployments for the backend API and the static frontend.
+The backend is backed by a persistent volume claim so the SQLite database
+survives pod restarts. The manifests are managed via Kustomize and can be
+synchronised by Argo CD using the example application specification in
+`argocd/application.yaml`.
+
+Update the ConfigMap with any custom rule values, adjust the container image
+references and configure your ingress controller to route `/api` to the backend
+service. Everything else can point to the frontend service to deliver the
+updated dashboard without relying on GitHub Pages.

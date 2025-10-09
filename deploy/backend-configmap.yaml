@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: endolla-backend-config
+  namespace: endolla-watcher
+data:
+  ENDOLLA_DB_PATH: "/data/endolla.db"
+  ENDOLLA_FETCH_INTERVAL: "300"
+  ENDOLLA_AUTO_FETCH: "1"
+  ENDOLLA_RULE_UNUSED_DAYS: "7"
+  ENDOLLA_RULE_LONG_DAYS: "2"
+  ENDOLLA_RULE_LONG_MIN: "5"
+  ENDOLLA_RULE_UNAVAILABLE_HOURS: "24"
+  ENDOLLA_CORS_ORIGINS: "*"

@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Endolla Watcher</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="container">
+      <h1>Endolla Watcher</h1>
+      <nav>
+        <a href="index.html" aria-current="page">Dashboard</a>
+        <a href="about.html">About</a>
+      </nav>
+    </div>
+  </header>
+  <main class="container">
+    <section class="summary" aria-live="polite">
+      <h2>Network Overview</h2>
+      <div class="grid" id="summary-cards">
+        <article class="card">
+          <h3>Total ports</h3>
+          <p id="summary-chargers">–</p>
+        </article>
+        <article class="card">
+          <h3>Unavailable</h3>
+          <p id="summary-unavailable">–</p>
+        </article>
+        <article class="card">
+          <h3>Charging now</h3>
+          <p id="summary-charging">–</p>
+        </article>
+        <article class="card">
+          <h3>Sessions (total)</h3>
+          <p id="summary-sessions">–</p>
+        </article>
+        <article class="card">
+          <h3>Charges today</h3>
+          <p id="summary-charges-today">–</p>
+        </article>
+        <article class="card">
+          <h3>Avg session (24h)</h3>
+          <p id="summary-avg-session">–</p>
+        </article>
+      </div>
+      <div class="meta" id="summary-meta"></div>
+    </section>
+
+    <section class="rules">
+      <h2>Rule Summary</h2>
+      <ul id="rule-summary" class="rule-list"></ul>
+    </section>
+
+    <section class="history">
+      <h2>Recent Charging Activity</h2>
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">Day</th>
+            <th scope="col">Sessions started</th>
+          </tr>
+        </thead>
+        <tbody id="daily-sessions"></tbody>
+      </table>
+    </section>
+
+    <section class="problematic">
+      <h2>Problematic Chargers</h2>
+      <p class="muted" id="problematic-count">Loading…</p>
+      <div class="table-scroll">
+        <table aria-describedby="problematic-count">
+          <thead>
+            <tr>
+              <th scope="col">Location</th>
+              <th scope="col">Station</th>
+              <th scope="col">Port</th>
+              <th scope="col">Status</th>
+              <th scope="col">Reason</th>
+            </tr>
+          </thead>
+          <tbody id="problematic-table"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+  <footer class="site-footer">
+    <div class="container">
+      <small>&copy; <span id="year"></span> Endolla Watcher</small>
+      <small id="last-updated"></small>
+    </div>
+  </footer>
+  <script src="config.js"></script>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
