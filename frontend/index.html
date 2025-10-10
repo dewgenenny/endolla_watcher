@@ -54,15 +54,52 @@
           <h2 id="charges-heading">Charging Momentum</h2>
           <p class="chart-subtitle"><span id="charges-total">–</span> charges <span id="charges-range-window">in this period</span></p>
         </div>
-        <label class="range-select" for="charges-range">
-          Range
-          <select id="charges-range" name="charges-range">
-            <option value="5" selected>Last 5 days</option>
-            <option value="10">Last 10 days</option>
-            <option value="15">Last 15 days</option>
-            <option value="30">Last 30 days</option>
-          </select>
-        </label>
+        <div class="range-select">
+          <span class="range-label">Range</span>
+          <div
+            id="charges-range"
+            class="range-options"
+            role="radiogroup"
+            aria-label="Charging data range"
+          >
+            <button
+              type="button"
+              class="range-option is-active"
+              role="radio"
+              aria-checked="true"
+              data-value="5"
+            >
+              5 days
+            </button>
+            <button
+              type="button"
+              class="range-option"
+              role="radio"
+              aria-checked="false"
+              data-value="10"
+            >
+              10 days
+            </button>
+            <button
+              type="button"
+              class="range-option"
+              role="radio"
+              aria-checked="false"
+              data-value="15"
+            >
+              15 days
+            </button>
+            <button
+              type="button"
+              class="range-option"
+              role="radio"
+              aria-checked="false"
+              data-value="30"
+            >
+              30 days
+            </button>
+          </div>
+        </div>
       </div>
       <div class="chart-card">
         <canvas id="charges-chart" role="img" aria-label="Line chart showing daily charging sessions"></canvas>
