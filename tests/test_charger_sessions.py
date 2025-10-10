@@ -1,12 +1,9 @@
-import sqlite3
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 
 import endolla_watcher.storage as storage
 
 
-def test_charger_sessions():
-    conn = storage.connect(Path(":memory:"))
+def test_charger_sessions(conn):
     now = datetime.now(timezone.utc)
 
     start1 = now - timedelta(minutes=30)
@@ -41,4 +38,3 @@ def test_charger_sessions():
     assert len(sessions) == 2
     assert sessions[0]["duration"] == 10
     assert sessions[1]["duration"] == 10
-    conn.close()

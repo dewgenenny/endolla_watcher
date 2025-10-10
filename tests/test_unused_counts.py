@@ -1,12 +1,9 @@
-import sqlite3
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 
 import endolla_watcher.storage as storage
 
 
-def test_count_unused_chargers():
-    conn = storage.connect(Path(":memory:"))
+def test_count_unused_chargers(conn):
     now = datetime.now(timezone.utc)
 
     start_a = now - timedelta(days=2, hours=12)
@@ -52,4 +49,3 @@ def test_count_unused_chargers():
     count_2 = storage._count_unused_chargers(conn, 2, now)
     assert count_1 == 2
     assert count_2 == 1
-    conn.close()

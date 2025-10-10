@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: endolla-mysql
+  namespace: endolla-watcher
+  labels:
+    app.kubernetes.io/name: endolla-mysql
+    app.kubernetes.io/component: database
+spec:
+  selector:
+    app.kubernetes.io/name: endolla-mysql
+    app.kubernetes.io/component: database
+  ports:
+    - name: mysql
+      port: 3306
+      targetPort: 3306
