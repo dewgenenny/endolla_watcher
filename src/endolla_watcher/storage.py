@@ -6,7 +6,7 @@ import os
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, Iterable, Iterator, List, Sequence, Tuple
+from typing import Any, Callable, Dict, Iterable, Iterator, List, Sequence, Tuple
 from urllib.parse import urlparse, unquote
 
 import pymysql
@@ -17,8 +17,9 @@ from .rules import Rules
 
 logger = logging.getLogger(__name__)
 
-# Delete records older than this many days
-MAX_DATA_AGE_DAYS = 28
+# Data retention policy
+HIGH_DETAIL_DAYS = 7
+MEDIUM_DETAIL_DAYS = 30
 
 UNAVAILABLE_STATUSES = {"OUT_OF_ORDER", "UNAVAILABLE"}
 
@@ -119,11 +120,95 @@ def _ensure_schema(conn: Connection) -> None:
             conn.commit()
 
 
-def prune_old_data(conn: Connection, max_age_days: int = MAX_DATA_AGE_DAYS) -> None:
-    cutoff = datetime.now().astimezone() - timedelta(days=max_age_days)
-    cutoff_iso = cutoff.isoformat()
+def _truncate_to_hour(ts: datetime) -> datetime:
+    return ts.replace(minute=0, second=0, microsecond=0)
+
+
+def _truncate_to_day(ts: datetime) -> datetime:
+    return ts.replace(hour=0, minute=0, second=0, microsecond=0)
+
+
+def _downsample_range(
+    conn: Connection,
+    *,
+    bucket: Callable[[datetime], datetime],
+    newer_than: datetime | None = None,
+    older_than: datetime | None = None,
+) -> List[int]:
+    query = [
+        "SELECT id, location_id, station_id, port_id, ts",
+        "FROM port_status",
+        "WHERE 1 = 1",
+    ]
+    params: List[str] = []
+    if newer_than is not None:
+        query.append("AND ts >= %s")
+        params.append(newer_than.isoformat())
+    if older_than is not None:
+        query.append("AND ts < %s")
+        params.append(older_than.isoformat())
+    query.append("ORDER BY location_id, station_id, port_id, ts")
+    sql = " ".join(query)
+
+    seen: Dict[Tuple[PortKey, Any], int] = {}
+    to_delete: List[int] = []
     with _with_cursor(conn) as cur:
-        cur.execute("DELETE FROM port_status WHERE ts < %s", (cutoff_iso,))
+        cur.execute(sql, params)
+        for row in cur.fetchall():
+            row_id, loc, sta, port, ts_str = row
+            try:
+                ts = datetime.fromisoformat(ts_str)
+            except (TypeError, ValueError):
+                logger.debug("Unable to parse timestamp '%s' for row %s", ts_str, row_id)
+                continue
+            key = ((loc, sta, port), bucket(ts))
+            if key in seen:
+                to_delete.append(row_id)
+            else:
+                seen[key] = row_id
+    return to_delete
+
+
+def _delete_rows(conn: Connection, row_ids: Sequence[int], chunk_size: int = 1000) -> None:
+    if not row_ids:
+        return
+    with _with_cursor(conn) as cur:
+        for start in range(0, len(row_ids), chunk_size):
+            chunk = row_ids[start : start + chunk_size]
+            placeholders = ", ".join(["%s"] * len(chunk))
+            cur.execute(
+                f"DELETE FROM port_status WHERE id IN ({placeholders})",
+                tuple(chunk),
+            )
+
+
+def prune_old_data(conn: Connection) -> None:
+    now = datetime.now().astimezone()
+    high_detail_cutoff = now - timedelta(days=HIGH_DETAIL_DAYS)
+    medium_detail_cutoff = now - timedelta(days=MEDIUM_DETAIL_DAYS)
+
+    to_delete: List[int] = []
+    # Keep at most one record per day for very old data (low detail)
+    to_delete.extend(
+        _downsample_range(
+            conn,
+            bucket=_truncate_to_day,
+            older_than=medium_detail_cutoff,
+        )
+    )
+    # Keep at most one record per hour for medium-aged data
+    to_delete.extend(
+        _downsample_range(
+            conn,
+            bucket=_truncate_to_hour,
+            newer_than=medium_detail_cutoff,
+            older_than=high_detail_cutoff,
+        )
+    )
+
+    if to_delete:
+        _delete_rows(conn, to_delete)
+        logger.debug("Pruned %d historical rows", len(to_delete))
     conn.commit()
 
 
@@ -602,7 +687,7 @@ def charger_sessions(
     station_id: str | None,
     limit: int = 10,
 ) -> Dict[str | None, List[Dict[str, Any]]]:
-    since = datetime.now().astimezone() - timedelta(days=MAX_DATA_AGE_DAYS)
+    since = datetime.now().astimezone() - timedelta(days=MEDIUM_DETAIL_DAYS)
     history: Dict[str | None, List[Tuple[datetime, str]]] = {}
     with _with_cursor(conn) as cur:
         cur.execute(
