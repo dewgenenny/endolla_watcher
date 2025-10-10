@@ -164,6 +164,7 @@ def _build_dashboard(
     settings: Settings,
     locations: Dict[str, Dict[str, float]],
     daily_days: int,
+    granularity: str,
 ) -> Dict[str, Any]:
     conn = _connect_db(settings)
     try:
@@ -171,6 +172,7 @@ def _build_dashboard(
         stats = storage.stats_from_db(conn)
         history = storage.timeline_stats(conn, settings.rules)
         daily = storage.sessions_per_day(conn, days=daily_days)
+        series = storage.sessions_time_series(conn, days=daily_days, granularity=granularity)
         db_stats = storage.db_stats(conn)
         updated = _latest_snapshot(conn)
     finally:
@@ -181,6 +183,8 @@ def _build_dashboard(
         "stats": stats,
         "history": history,
         "daily": daily,
+        "series": series,
+        "series_granularity": granularity,
         "rule_counts": rule_counts,
         "rules": asdict(settings.rules),
         "updated": updated,
@@ -242,10 +246,18 @@ async def healthz() -> Dict[str, Any]:
 
 
 @app.get("/api/dashboard")
-async def dashboard(days: int = Query(5, ge=1, le=90)) -> Dict[str, Any]:
+async def dashboard(
+    days: int = Query(5, ge=1, le=90),
+    granularity: str = Query("day"),
+) -> Dict[str, Any]:
     settings = _require_settings()
     locations: Dict[str, Dict[str, float]] = getattr(app.state, "locations", {})
-    return await asyncio.to_thread(_build_dashboard, settings, locations, days)
+    granularity_normalized = granularity.lower()
+    if granularity_normalized not in {"day", "hour"}:
+        raise HTTPException(status_code=422, detail="Unsupported granularity")
+    return await asyncio.to_thread(
+        _build_dashboard, settings, locations, days, granularity_normalized
+    )
 
 
 @app.post("/api/refresh", status_code=202)
