@@ -21,7 +21,10 @@ with environment-specific overlays.
 Point an Argo CD `Application` at the `deploy/` directory or apply the example
 under `argocd/application.yaml`. Update the container image references if your
 GHCR repository differs from the defaults and adjust the ConfigMap with any
-custom rule values or fetch intervals you require.
+custom rule values or fetch intervals you require. The GitHub Actions workflow
+automatically rewrites the Kustomize image tags to the commit SHA that produced
+each container, ensuring Argo CD always detects a manifest change when new
+images are published.
 
 Once synced, Argo CD will create the namespace, persistent volume claim,
 backend API deployment and the static frontend. Configure your ingress or

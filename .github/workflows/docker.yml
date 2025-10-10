@@ -1,7 +1,7 @@
 name: Build and push Docker images
 
 permissions:
-  contents: read
+  contents: write
   packages: write
 
 on:
@@ -42,4 +42,30 @@ jobs:
           tags: |
             ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}:latest
             ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}:${{ github.sha }}
+
+  update-manifests:
+    name: Update Argo CD image tags
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Configure git user
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+      - name: Update image tags
+        run: |
+          python3 scripts/update_kustomize_image.py deploy/kustomization.yaml ghcr.io/${{ github.repository_owner }}/endolla-watcher-frontend ${{ github.sha }}
+          python3 scripts/update_kustomize_image.py deploy/kustomization.yaml ghcr.io/${{ github.repository_owner }}/endolla-watcher-backend ${{ github.sha }}
+      - name: Commit and push changes
+        run: |
+          if git diff --quiet; then
+            echo "No manifest changes to commit"
+            exit 0
+          fi
+          git commit -am "chore: update Argo CD image tags [skip ci]"
+          git push
 
