@@ -11,6 +11,7 @@ from typing import Any, Dict, Optional
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from pymysql.err import OperationalError
 
 from .data import fetch_locations
 from .logging_utils import setup_logging
@@ -127,7 +128,27 @@ async def _fetch_loop(settings: Settings) -> None:
 
 
 def _connect_db(settings: Settings):
-    return storage.connect(settings.db_url)
+    try:
+        return storage.connect(settings.db_url)
+    except OperationalError as exc:
+        logger.exception("Failed to connect to MySQL")
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Unable to connect to the Endolla database. "
+                "Verify that the MySQL service is reachable and credentials are valid."
+            ),
+        ) from exc
+    except RuntimeError as exc:
+        # PyMySQL raises RuntimeError when optional auth dependencies are missing.
+        logger.exception("MySQL initialisation failed")
+        message = "Database initialisation failed."
+        if "cryptography" in str(exc).lower():
+            message = (
+                "Database initialisation failed because the 'cryptography' package is missing. "
+                "Install it to support caching_sha2_password authentication."
+            )
+        raise HTTPException(status_code=500, detail=message) from exc
 
 
 def _latest_snapshot(conn) -> str | None:

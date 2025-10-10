@@ -18,6 +18,10 @@ pip install -r requirements.txt
 pip install -e .
 ```
 
+The backend authenticates with MySQL using the `caching_sha2_password` plugin by
+default, which requires the `cryptography` package. Installing dependencies via
+`requirements.txt` or the project metadata pulls it in automatically.
+
 Start the FastAPI backend with uvicorn. Provide a MySQL URL and disable the
 fetch loop so you can feed fixture data manually during development:
 
