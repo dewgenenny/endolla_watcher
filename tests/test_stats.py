@@ -99,3 +99,47 @@ def test_sessions_per_day_counts_active_sessions(conn):
 
     sessions = storage.sessions_per_day(conn, days=2)
     assert sessions[-1]["sessions"] == 1
+
+
+def test_sessions_time_series_hourly(conn):
+    now = datetime.now(timezone.utc)
+
+    baseline = now - timedelta(hours=6, minutes=15)
+    first_start = now - timedelta(hours=6)
+    first_end = first_start + timedelta(minutes=30)
+    second_start = now - timedelta(hours=1, minutes=30)
+    second_end = second_start + timedelta(minutes=45)
+
+    snapshots = [
+        (baseline, "AVAILABLE"),
+        (first_start, "IN_USE"),
+        (first_end, "AVAILABLE"),
+        (second_start, "IN_USE"),
+        (second_end, "AVAILABLE"),
+    ]
+
+    for ts, status in snapshots:
+        storage.save_snapshot(
+            conn,
+            [
+                {
+                    "location_id": "L1",
+                    "station_id": "S1",
+                    "port_id": "P1",
+                    "status": status,
+                    "last_updated": ts.isoformat(),
+                }
+            ],
+            ts=ts,
+        )
+
+    series = storage.sessions_time_series(conn, days=1, granularity="hour")
+    assert series, "expected hourly series to include at least one bucket"
+
+    total_sessions = sum(entry.get("sessions", 0) for entry in series)
+    assert total_sessions == 2
+
+    target_hour_key = second_start.astimezone().replace(minute=0, second=0, microsecond=0).isoformat()
+    target_bucket = next((entry for entry in series if entry.get("start") == target_hour_key), None)
+    assert target_bucket is not None
+    assert target_bucket["sessions"] >= 1

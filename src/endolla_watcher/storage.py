@@ -632,8 +632,21 @@ def charger_sessions(
     return result
 
 
-def sessions_per_day(conn: Connection, days: int = 7) -> List[Dict[str, Any]]:
-    since = datetime.now().astimezone() - timedelta(days=days)
+def sessions_time_series(
+    conn: Connection,
+    days: int = 7,
+    granularity: str = "day",
+) -> List[Dict[str, Any]]:
+    granularity = granularity.lower()
+    if granularity not in {"day", "hour"}:
+        raise ValueError(f"Unsupported granularity '{granularity}'")
+
+    now = datetime.now().astimezone()
+    if granularity == "hour":
+        since = (now - timedelta(days=days)).replace(minute=0, second=0, microsecond=0)
+    else:
+        since = now - timedelta(days=days)
+
     history: Dict[PortKey, List[Tuple[datetime, str]]] = {}
     with _with_cursor(conn) as cur:
         cur.execute(
@@ -649,16 +662,57 @@ def sessions_per_day(conn: Connection, days: int = 7) -> List[Dict[str, Any]]:
             history.setdefault((loc, sta, port), []).append((datetime.fromisoformat(ts_str), status))
 
     counts: Dict[str, int] = {}
+
+    def _bucket_start(ts: datetime) -> datetime:
+        ts_local = ts.astimezone()
+        if granularity == "hour":
+            return ts_local.replace(minute=0, second=0, microsecond=0)
+        return ts_local.replace(hour=0, minute=0, second=0, microsecond=0)
+
     for events in history.values():
         last_status: str | None = None
         for ts, status in events:
-            if status == "IN_USE" and last_status != "IN_USE":
-                if ts >= since:
-                    day = ts.date().isoformat()
-                    counts[day] = counts.get(day, 0) + 1
+            if status == "IN_USE" and last_status != "IN_USE" and ts >= since:
+                bucket = _bucket_start(ts)
+                key = bucket.isoformat()
+                counts[key] = counts.get(key, 0) + 1
             last_status = status
-    result = []
-    for i in range(days - 1, -1, -1):
-        day = (datetime.now().astimezone() - timedelta(days=i)).date().isoformat()
-        result.append({"day": day, "sessions": counts.get(day, 0)})
+
+    result: List[Dict[str, Any]] = []
+    if granularity == "hour":
+        start = (now - timedelta(days=days)).replace(minute=0, second=0, microsecond=0)
+        end = now.replace(minute=0, second=0, microsecond=0)
+        current = start
+        while current <= end:
+            key = current.isoformat()
+            result.append(
+                {
+                    "start": key,
+                    "end": (current + timedelta(hours=1)).isoformat(),
+                    "sessions": counts.get(key, 0),
+                }
+            )
+            current += timedelta(hours=1)
+    else:
+        for i in range(days - 1, -1, -1):
+            day_start = (now - timedelta(days=i)).replace(hour=0, minute=0, second=0, microsecond=0)
+            key = day_start.isoformat()
+            result.append(
+                {
+                    "start": key,
+                    "end": (day_start + timedelta(days=1)).isoformat(),
+                    "sessions": counts.get(key, 0),
+                }
+            )
     return result
+
+
+def sessions_per_day(conn: Connection, days: int = 7) -> List[Dict[str, Any]]:
+    series = sessions_time_series(conn, days=days, granularity="day")
+    return [
+        {
+            "day": datetime.fromisoformat(entry["start"]).date().isoformat(),
+            "sessions": entry["sessions"],
+        }
+        for entry in series
+    ]

@@ -83,6 +83,33 @@ const formatDate = (isoDate, { includeWeekday = true } = {}) => {
   return date.toLocaleDateString(undefined, options);
 };
 
+const formatDateTime = (
+  isoDate,
+  { includeWeekday = true, includeTime = true } = {}
+) => {
+  if (!isoDate) {
+    return '–';
+  }
+  const date = new Date(isoDate);
+  if (Number.isNaN(date)) {
+    return isoDate;
+  }
+  const options = {
+    month: 'short',
+    day: 'numeric',
+    ...(includeWeekday ? { weekday: 'short' } : {}),
+  };
+  if (includeTime) {
+    options.hour = '2-digit';
+    options.minute = '2-digit';
+  }
+  const now = new Date();
+  if (date.getFullYear() !== now.getFullYear()) {
+    options.year = 'numeric';
+  }
+  return date.toLocaleString(undefined, options);
+};
+
 const formatRange = (startIso, endIso) => {
   if (!startIso || !endIso) {
     return null;
@@ -102,6 +129,47 @@ const formatRange = (startIso, endIso) => {
     endOptions.year = 'numeric';
   }
   return `${start.toLocaleDateString(undefined, startOptions)} – ${end.toLocaleDateString(undefined, endOptions)}`;
+};
+
+const formatPeriodRange = (startIso, endIso, granularity) => {
+  if (!startIso) {
+    return null;
+  }
+  if (granularity === 'hour') {
+    const start = formatDateTime(startIso);
+    if (!start || start === '–') {
+      return null;
+    }
+    if (!endIso) {
+      return start;
+    }
+    const end = formatDateTime(endIso);
+    if (!end || end === '–') {
+      return start;
+    }
+    return `${start} – ${end}`;
+  }
+  return formatRange(startIso, endIso);
+};
+
+const determineGranularity = (days) => {
+  if (days <= 7) {
+    return 'hour';
+  }
+  return 'day';
+};
+
+const formatTooltipTitle = (chart, dataIndex) => {
+  const timelineForChart = chart.$timeline || [];
+  const entry = timelineForChart[dataIndex];
+  if (!entry) {
+    return '';
+  }
+  const granularityForChart = chart.$granularity || 'day';
+  if (granularityForChart === 'hour') {
+    return formatDateTime(entry.start);
+  }
+  return formatDate(entry.day || entry.start);
 };
 
 const getRangeOptions = () => {
@@ -222,34 +290,58 @@ const updateDaily = (daily) => {
   });
 };
 
-const updateChargesSummary = (daily) => {
+const updateChargesSummary = (timeline, granularity) => {
   if (chargesTotalEl) {
-    const total = (daily || []).reduce((acc, entry) => acc + (entry?.sessions ?? 0), 0);
+    const total = (timeline || []).reduce((acc, entry) => acc + (entry?.sessions ?? 0), 0);
     chargesTotalEl.textContent = formatNumber(total);
   }
   if (chargesRangeWindow) {
-    if (!daily || daily.length === 0) {
+    if (!timeline || timeline.length === 0) {
       chargesRangeWindow.textContent = 'in this period';
       return;
     }
-    if (daily.length === 1) {
-      chargesRangeWindow.textContent = `on ${formatDate(daily[0].day)}`;
+    if (timeline.length === 1) {
+      const single = timeline[0];
+      if (granularity === 'hour') {
+        chargesRangeWindow.textContent = `at ${formatDateTime(single?.start)}`;
+      } else {
+        const label = single?.start || single?.day;
+        chargesRangeWindow.textContent = `on ${formatDate(label)}`;
+      }
       return;
     }
-    const start = daily[0]?.day;
-    const end = daily[daily.length - 1]?.day;
-    const rangeText = formatRange(start, end);
+    const start = timeline[0]?.start || timeline[0]?.day;
+    const lastEntry = timeline[timeline.length - 1];
+    const end = lastEntry?.start || lastEntry?.day;
+    const rangeText = formatPeriodRange(start, end, granularity);
     chargesRangeWindow.textContent = rangeText ? `between ${rangeText}` : 'in this period';
   }
 };
 
-const updateChargesChart = (daily) => {
-  const timeline = (daily || []).map((entry) => ({
-    day: entry?.day,
-    sessions: Number.isFinite(entry?.sessions) ? entry.sessions : 0,
-  }));
+const updateChargesChart = (series, granularity = 'day') => {
+  const resolvedGranularity = granularity === 'hour' ? 'hour' : 'day';
+  const timeline = (series || [])
+    .map((entry) => {
+      const baseStart = entry?.start || (entry?.day ? `${entry.day}T00:00:00` : null);
+      if (!baseStart) {
+        return null;
+      }
+      const sessions = Number.isFinite(entry?.sessions) ? entry.sessions : 0;
+      const label =
+        resolvedGranularity === 'hour'
+          ? formatDateTime(baseStart, { includeWeekday: false })
+          : formatDate(entry?.day || baseStart, { includeWeekday: false });
+      return {
+        start: baseStart,
+        end: entry?.end || null,
+        day: entry?.day,
+        sessions,
+        label,
+      };
+    })
+    .filter(Boolean);
 
-  updateChargesSummary(timeline);
+  updateChargesSummary(timeline, resolvedGranularity);
 
   if (!chargesChartCanvas) {
     return;
@@ -269,22 +361,48 @@ const updateChargesChart = (daily) => {
     return;
   }
 
-  const labels = timeline.map((entry) => formatDate(entry.day, { includeWeekday: false }));
+  const labels = timeline.map((entry) => entry.label);
   const values = timeline.map((entry) => entry.sessions);
+  const isHourly = resolvedGranularity === 'hour';
+  const style = {
+    borderWidth: isHourly ? 2 : 3,
+    tension: isHourly ? 0.3 : 0.45,
+    pointRadius: isHourly ? 0 : 5,
+    pointHoverRadius: isHourly ? 4 : 7,
+  };
 
   if (chargesChart) {
     chargesChart.data.labels = labels;
     const dataset = chargesChart.data.datasets[0];
     dataset.data = values;
     dataset.borderColor = '#0ea5e9';
-    dataset.borderWidth = 3;
-    dataset.tension = 0.45;
+    dataset.borderWidth = style.borderWidth;
+    dataset.tension = style.tension;
     dataset.fill = 'origin';
     dataset.pointBackgroundColor = '#38bdf8';
     dataset.pointBorderWidth = 0;
-    dataset.pointRadius = 5;
-    dataset.pointHoverRadius = 7;
+    dataset.pointRadius = style.pointRadius;
+    dataset.pointHoverRadius = style.pointHoverRadius;
+    const tickOptions = chargesChart.options.scales?.x?.ticks;
+    if (tickOptions) {
+      if (isHourly) {
+        tickOptions.maxTicksLimit = 12;
+      } else {
+        delete tickOptions.maxTicksLimit;
+      }
+    }
+    const tooltipCallbacks = chargesChart.options.plugins?.tooltip?.callbacks;
+    if (tooltipCallbacks) {
+      tooltipCallbacks.title = (items) => {
+        if (!items?.length) {
+          return '';
+        }
+        const { chart, dataIndex } = items[0];
+        return formatTooltipTitle(chart, dataIndex);
+      };
+    }
     chargesChart.$timeline = timeline;
+    chargesChart.$granularity = resolvedGranularity;
     chargesChart.update();
   } else {
     const context = chargesChartCanvas.getContext('2d');
@@ -297,8 +415,8 @@ const updateChargesChart = (daily) => {
             label: 'Charges',
             data: values,
             borderColor: '#0ea5e9',
-            borderWidth: 3,
-            tension: 0.45,
+            borderWidth: style.borderWidth,
+            tension: style.tension,
             fill: 'origin',
             backgroundColor(context) {
               const { chart } = context;
@@ -313,8 +431,8 @@ const updateChargesChart = (daily) => {
             },
             pointBackgroundColor: '#38bdf8',
             pointBorderWidth: 0,
-            pointRadius: 5,
-            pointHoverRadius: 7,
+            pointRadius: style.pointRadius,
+            pointHoverRadius: style.pointHoverRadius,
           },
         ],
       },
@@ -336,9 +454,7 @@ const updateChargesChart = (daily) => {
                   return '';
                 }
                 const { chart, dataIndex } = items[0];
-                const timelineForChart = chart.$timeline || [];
-                const iso = timelineForChart[dataIndex]?.day;
-                return formatDate(iso);
+                return formatTooltipTitle(chart, dataIndex);
               },
               label(item) {
                 return `${formatNumber(item.parsed.y)} charges`;
@@ -358,6 +474,7 @@ const updateChargesChart = (daily) => {
               color: '#475569',
               maxRotation: 0,
               autoSkip: true,
+              maxTicksLimit: isHourly ? 12 : undefined,
             },
           },
           y: {
@@ -378,6 +495,7 @@ const updateChargesChart = (daily) => {
   }
 
   chargesChart.$timeline = timeline;
+  chargesChart.$granularity = resolvedGranularity;
   setChartStatus(null);
 };
 
@@ -434,6 +552,7 @@ const showError = (error) => {
 
 const loadDashboard = async (days = DEFAULT_DAYS) => {
   const targetDays = clampDays(days);
+  const targetGranularity = determineGranularity(targetDays);
   if (chargesRangeControl) {
     setRangeSelection(String(targetDays));
   }
@@ -444,7 +563,10 @@ const loadDashboard = async (days = DEFAULT_DAYS) => {
   dashboardController = controller;
   try {
     setChartStatus('Loading charging trend…');
-    const params = new URLSearchParams({ days: targetDays.toString() });
+    const params = new URLSearchParams({
+      days: targetDays.toString(),
+      granularity: targetGranularity,
+    });
     const response = await fetch(`${API_BASE}/dashboard?${params.toString()}`, {
       signal: controller.signal,
     });
@@ -458,7 +580,16 @@ const loadDashboard = async (days = DEFAULT_DAYS) => {
     updateSummary(data.stats, data);
     updateRules(data.rules, data.rule_counts);
     updateDaily(data.daily);
-    updateChargesChart(data.daily);
+    const hasSeries = Array.isArray(data.series);
+    const series = hasSeries ? data.series : data.daily;
+    const responseGranularity = hasSeries
+      ? typeof data.series_granularity === 'string'
+        ? data.series_granularity
+        : targetGranularity
+      : 'day';
+    const normalizedGranularity =
+      typeof responseGranularity === 'string' ? responseGranularity.toLowerCase() : 'day';
+    updateChargesChart(series, normalizedGranularity);
     updateProblematic(data.problematic, data.locations);
   } catch (error) {
     if (error.name === 'AbortError') {
