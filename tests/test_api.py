@@ -7,9 +7,12 @@ from fastapi.testclient import TestClient
 from endolla_watcher import storage
 
 
-def _seed_database(db_path):
-    conn = storage.connect(db_path)
+def _seed_database(db_url: str) -> None:
+    conn = storage.connect(db_url)
     try:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM port_status")
+        conn.commit()
         base = datetime.now(timezone.utc) - timedelta(hours=2)
         snapshots = [
             (
@@ -56,19 +59,18 @@ def _seed_database(db_path):
 
 
 @pytest.mark.parametrize("auto_fetch", ["0"])
-def test_dashboard_endpoint(tmp_path, monkeypatch, auto_fetch):
-    db_path = tmp_path / "endolla.db"
+def test_dashboard_endpoint(tmp_path, monkeypatch, auto_fetch, db_url):
     locations = tmp_path / "locations.json"
     locations.write_text(
         json.dumps({"locations": [{"id": "L1", "latitude": 41.0, "longitude": 2.0}]}),
         encoding="utf-8",
     )
 
-    monkeypatch.setenv("ENDOLLA_DB_PATH", str(db_path))
+    monkeypatch.setenv("ENDOLLA_DB_URL", db_url)
     monkeypatch.setenv("ENDOLLA_AUTO_FETCH", auto_fetch)
     monkeypatch.setenv("ENDOLLA_LOCATIONS_FILE", str(locations))
 
-    _seed_database(db_path)
+    _seed_database(db_url)
 
     from endolla_watcher.api import app  # Import after environment variables are set
 

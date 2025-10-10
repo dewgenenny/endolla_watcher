@@ -1,46 +1,48 @@
 import argparse
+import logging
 import os
 import subprocess
 import time
 from datetime import datetime
-import logging
 from pathlib import Path
 from typing import Dict
-from .data import fetch_data, fetch_locations, parse_usage
-from .render import render, render_about, render_charger, render_problematic
+
 from . import storage
-from .rules import Rules
+from .data import fetch_data, fetch_locations, parse_usage
 from .logging_utils import setup_logging
+from .render import render, render_about, render_charger, render_problematic
+from .rules import Rules
 
 logger = logging.getLogger(__name__)
 
 
-def fetch_once(db: Path, file: Path | None = None) -> None:
+def fetch_once(db_url: str, file: Path | None = None) -> None:
     """Fetch the dataset and store a snapshot in the database."""
-    logger.debug("Fetching data with file=%s db=%s", file, db)
+    logger.debug("Fetching data with file=%s db_url=%s", file, db_url)
     data = fetch_data(file)
     records = parse_usage(data)
     logger.debug("Fetched %d records", len(records))
-    conn = storage.connect(db)
+    conn = storage.connect(db_url)
     storage.save_snapshot(conn, records)
     conn.close()
 
 
 def update_once(
     output: Path,
-    db: Path,
+    db_url: str,
     rules: Rules | None = None,
     locations: Dict[str, Dict[str, float]] | None = None,
 ) -> None:
     """Generate the HTML report from stored snapshots."""
-    logger.debug("Updating report from db=%s", db)
+    logger.debug("Updating report from db_url=%s", db_url)
     start = time.monotonic()
-    conn = storage.connect(db)
+    conn = storage.connect(db_url)
     problematic, rule_counts = storage.analyze_chargers(conn, rules)
     stats = storage.stats_from_db(conn)
     history = storage.timeline_stats(conn, rules)
     daily = storage.sessions_per_day(conn)
-    db_size = db.stat().st_size / (1024 * 1024)
+    db_stats = storage.db_stats(conn)
+    db_size = db_stats["size_bytes"] / (1024 * 1024)
     html = render(
         problematic,
         stats,
@@ -87,7 +89,11 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--file", type=Path)
     parser.add_argument("--output", type=Path, default=Path("site/index.html"))
-    parser.add_argument("--db", type=Path, default=Path("endolla.db"))
+    parser.add_argument(
+        "--db-url",
+        default=os.getenv("ENDOLLA_DB_URL"),
+        help="MySQL connection URL (default: ENDOLLA_DB_URL)",
+    )
     parser.add_argument(
         "--locations",
         type=Path,
@@ -152,11 +158,14 @@ def main() -> None:
     next_fetch = time.monotonic()
     next_update = time.monotonic()
 
+    if not args.db_url:
+        raise SystemExit("--db-url or ENDOLLA_DB_URL must be provided")
+
     while True:
         now = time.monotonic()
         if now >= next_fetch:
             logger.info("Fetching data")
-            fetch_once(args.db, args.file)
+            fetch_once(args.db_url, args.file)
             next_fetch += args.fetch_interval
             if next_fetch <= now:
                 # Catch up if the fetch took longer than the interval
@@ -164,7 +173,7 @@ def main() -> None:
 
         if now >= next_update:
             logger.info("Updating report")
-            update_once(args.output, args.db, rules, locations)
+            update_once(args.output, args.db_url, rules, locations)
             if args.push_site:
                 cmd = [
                     "push_site.py",

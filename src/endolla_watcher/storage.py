@@ -1,33 +1,20 @@
-import sqlite3
-from datetime import datetime, timedelta, timezone
-from pathlib import Path
-from typing import Any, Dict, Iterable, List, Tuple
-from .rules import Rules
-from . import stats as stats_mod
+"""Persistence helpers backed by a MySQL database."""
+from __future__ import annotations
+
 import logging
+import os
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
+from typing import Any, Dict, Iterable, Iterator, List, Sequence, Tuple
+from urllib.parse import urlparse, unquote
+
+import pymysql
+from pymysql.connections import Connection
+
+from . import stats as stats_mod
+from .rules import Rules
 
 logger = logging.getLogger(__name__)
-
-SCHEMA = """
-CREATE TABLE IF NOT EXISTS port_status (
-    ts TEXT NOT NULL,
-    location_id TEXT,
-    station_id TEXT,
-    port_id TEXT,
-    status TEXT,
-    last_updated TEXT
-);
-CREATE INDEX IF NOT EXISTS idx_port_ts
-    ON port_status(location_id, station_id, port_id, ts);
-"""
-
-# Current schema version for migrations
-CURRENT_SCHEMA_VERSION = 2
-
-MIGRATIONS = {
-    1: SCHEMA,
-    2: "CREATE INDEX IF NOT EXISTS idx_ts ON port_status(ts);",
-}
 
 # Delete records older than this many days
 MAX_DATA_AGE_DAYS = 28
@@ -37,86 +24,193 @@ UNAVAILABLE_STATUSES = {"OUT_OF_ORDER", "UNAVAILABLE"}
 PortKey = Tuple[str | None, str | None, str | None]
 
 
-def _apply_migrations(conn: sqlite3.Connection) -> None:
-    """Apply pending schema migrations to the database."""
-    cur = conn.execute("PRAGMA user_version")
-    version = cur.fetchone()[0]
-    logger.debug("Current schema version: %d", version)
-    for v in range(version + 1, CURRENT_SCHEMA_VERSION + 1):
-        script = MIGRATIONS.get(v)
-        if script:
-            logger.info("Applying migration %d", v)
-            conn.executescript(script)
-            conn.execute(f"PRAGMA user_version = {v}")
+@dataclass
+class MySQLConfig:
+    """Connection details for the Endolla Watcher database."""
+
+    host: str
+    port: int
+    user: str
+    password: str | None
+    database: str
+
+    @classmethod
+    def from_env(cls) -> "MySQLConfig":
+        url = os.getenv("ENDOLLA_DB_URL")
+        if not url:
+            raise RuntimeError("ENDOLLA_DB_URL environment variable is required")
+        return cls.from_url(url)
+
+    @classmethod
+    def from_url(cls, url: str) -> "MySQLConfig":
+        parsed = urlparse(url)
+        if parsed.scheme not in {"mysql", "mysql+pymysql"}:
+            raise ValueError(f"Unsupported MySQL URL scheme: {parsed.scheme}")
+        if parsed.username is None:
+            raise ValueError("MySQL URL must include a username")
+        if parsed.hostname is None:
+            raise ValueError("MySQL URL must include a hostname")
+        database = parsed.path.lstrip("/")
+        if not database:
+            raise ValueError("MySQL URL must include a database name")
+        password = unquote(parsed.password) if parsed.password else None
+        return cls(
+            host=parsed.hostname,
+            port=parsed.port or 3306,
+            user=parsed.username,
+            password=password,
+            database=database,
+        )
+
+
+SCHEMA_STATEMENTS: Sequence[str] = (
+    """
+    CREATE TABLE IF NOT EXISTS schema_version (
+        id TINYINT PRIMARY KEY,
+        version INT NOT NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS port_status (
+        id BIGINT AUTO_INCREMENT PRIMARY KEY,
+        ts VARCHAR(64) NOT NULL,
+        location_id VARCHAR(64) NULL,
+        station_id VARCHAR(64) NULL,
+        port_id VARCHAR(64) NULL,
+        status VARCHAR(32) NULL,
+        last_updated VARCHAR(64) NULL,
+        INDEX idx_port_ts (location_id, station_id, port_id, ts),
+        INDEX idx_ts (ts)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    """,
+)
+
+CURRENT_SCHEMA_VERSION = 1
+
+
+def _with_cursor(conn: Connection) -> Iterator[pymysql.cursors.Cursor]:
+    cursor = conn.cursor()
+    try:
+        yield cursor
+    finally:
+        cursor.close()
+
+
+def _ensure_schema(conn: Connection) -> None:
+    for statement in SCHEMA_STATEMENTS:
+        with _with_cursor(conn) as cur:
+            cur.execute(statement)
+    with _with_cursor(conn) as cur:
+        cur.execute("SELECT version FROM schema_version WHERE id = 1")
+        row = cur.fetchone()
+        if row is None:
+            cur.execute(
+                "INSERT INTO schema_version (id, version) VALUES (1, %s)",
+                (CURRENT_SCHEMA_VERSION,),
+            )
             conn.commit()
-    logger.debug("Migrations complete")
+        elif row[0] != CURRENT_SCHEMA_VERSION:
+            cur.execute(
+                "UPDATE schema_version SET version = %s WHERE id = 1",
+                (CURRENT_SCHEMA_VERSION,),
+            )
+            conn.commit()
 
 
-def prune_old_data(conn: sqlite3.Connection, max_age_days: int = MAX_DATA_AGE_DAYS) -> None:
-    """Remove data older than the configured retention window."""
+def prune_old_data(conn: Connection, max_age_days: int = MAX_DATA_AGE_DAYS) -> None:
     cutoff = datetime.now().astimezone() - timedelta(days=max_age_days)
-    logger.debug("Pruning data older than %s", cutoff)
-    conn.execute("DELETE FROM port_status WHERE ts < ?", (cutoff.isoformat(),))
+    cutoff_iso = cutoff.isoformat()
+    with _with_cursor(conn) as cur:
+        cur.execute("DELETE FROM port_status WHERE ts < %s", (cutoff_iso,))
     conn.commit()
-    # Reclaim space from deleted rows
-    conn.execute("PRAGMA incremental_vacuum")
 
 
-def connect(path: Path) -> sqlite3.Connection:
-    """Open connection and ensure schema and retention policy."""
-    logger.debug("Connecting to database %s", path)
-    conn = sqlite3.connect(path)
-    # Enable incremental auto_vacuum so deleted rows free space over time
-    conn.execute("PRAGMA auto_vacuum = INCREMENTAL")
-    _apply_migrations(conn)
+def connect(config: MySQLConfig | str | None = None) -> Connection:
+    if config is None:
+        config = MySQLConfig.from_env()
+    if isinstance(config, str):
+        config = MySQLConfig.from_url(config)
+    conn = pymysql.connect(
+        host=config.host,
+        port=config.port,
+        user=config.user,
+        password=config.password,
+        database=config.database,
+        autocommit=False,
+        charset="utf8mb4",
+        cursorclass=pymysql.cursors.Cursor,
+    )
+    _ensure_schema(conn)
     prune_old_data(conn)
     return conn
 
 
-def db_stats(conn: sqlite3.Connection) -> Dict[str, int]:
-    """Return basic statistics about the database."""
-    rows = conn.execute("SELECT COUNT(*) FROM port_status").fetchone()[0]
-    page_count = conn.execute("PRAGMA page_count").fetchone()[0]
-    page_size = conn.execute("PRAGMA page_size").fetchone()[0]
-    freelist = conn.execute("PRAGMA freelist_count").fetchone()[0]
+def db_stats(conn: Connection) -> Dict[str, int]:
+    with _with_cursor(conn) as cur:
+        cur.execute("SELECT COUNT(*) FROM port_status")
+        rows = int(cur.fetchone()[0])
+    with _with_cursor(conn) as cur:
+        cur.execute(
+            """
+            SELECT COALESCE(SUM(data_length + index_length), 0)
+            FROM information_schema.tables
+            WHERE table_schema = DATABASE() AND table_name = 'port_status'
+            """
+        )
+        size_bytes = int(cur.fetchone()[0] or 0)
+    with _with_cursor(conn) as cur:
+        cur.execute(
+            """
+            SELECT COALESCE(SUM(data_free), 0)
+            FROM information_schema.tables
+            WHERE table_schema = DATABASE() AND table_name = 'port_status'
+            """
+        )
+        free_bytes = int(cur.fetchone()[0] or 0)
     stats = {
         "rows": rows,
-        "page_count": page_count,
-        "page_size": page_size,
-        "freelist": freelist,
-        "size_bytes": page_count * page_size,
+        "size_bytes": size_bytes,
+        "free_bytes": free_bytes,
     }
     logger.debug("Database stats: %s", stats)
     return stats
 
 
-def compress_db(conn: sqlite3.Connection) -> None:
-    """Run VACUUM to reclaim unused space and defragment the database."""
-    logger.info("Compressing database")
-    conn.execute("VACUUM")
-    conn.execute("PRAGMA optimize")
+def compress_db(conn: Connection) -> None:
+    with _with_cursor(conn) as cur:
+        cur.execute("OPTIMIZE TABLE port_status")
+    conn.commit()
 
 
-def save_snapshot(conn: sqlite3.Connection, records: Iterable[Dict[str, Any]], ts: datetime | None = None) -> None:
-    """Persist only status changes for each port."""
+def save_snapshot(
+    conn: Connection,
+    records: Iterable[Dict[str, Any]],
+    ts: datetime | None = None,
+) -> None:
     if ts is None:
         ts = datetime.now().astimezone()
-    logger.debug("Saving snapshot at %s", ts)
-    rows = []
+    ts_iso = ts.isoformat()
+    new_rows: List[Tuple[str, str | None, str | None, str | None, str | None, str | None]] = []
     for r in records:
         loc = r.get("location_id")
         sta = r.get("station_id")
         port = r.get("port_id")
         status = r.get("status")
-        last = conn.execute(
-            "SELECT status FROM port_status WHERE location_id=? AND station_id=? AND port_id=? ORDER BY ts DESC LIMIT 1",
-            (loc, sta, port),
-        ).fetchone()
-        if last and last[0] == status:
+        with _with_cursor(conn) as cur:
+            cur.execute(
+                """
+                SELECT status FROM port_status
+                WHERE location_id <=> %s AND station_id <=> %s AND port_id <=> %s
+                ORDER BY ts DESC LIMIT 1
+                """,
+                (loc, sta, port),
+            )
+            row = cur.fetchone()
+        if row and row[0] == status:
             continue
-        rows.append(
+        new_rows.append(
             (
-                ts.isoformat(),
+                ts_iso,
                 loc,
                 sta,
                 port,
@@ -124,20 +218,20 @@ def save_snapshot(conn: sqlite3.Connection, records: Iterable[Dict[str, Any]], t
                 r.get("last_updated"),
             )
         )
-    if rows:
-        conn.executemany(
-            "INSERT INTO port_status (ts, location_id, station_id, port_id, status, last_updated) VALUES (?, ?, ?, ?, ?, ?)",
-            rows,
-        )
+    if new_rows:
+        with _with_cursor(conn) as cur:
+            cur.executemany(
+                """
+                INSERT INTO port_status (ts, location_id, station_id, port_id, status, last_updated)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                """,
+                new_rows,
+            )
         conn.commit()
-        logger.debug("Saved snapshot with %d rows", len(rows))
-    else:
-        logger.debug("No status changes to save")
     prune_old_data(conn)
 
 
 def _session_durations(statuses: List[Tuple[datetime, str]]) -> List[float]:
-    """Return session durations in minutes from a status timeline."""
     sessions: List[float] = []
     start: datetime | None = None
     for ts, status in statuses:
@@ -148,14 +242,14 @@ def _session_durations(statuses: List[Tuple[datetime, str]]) -> List[float]:
             if start is not None:
                 sessions.append((ts - start).total_seconds() / 60)
                 start = None
-    logger.debug("Computed %d session durations", len(sessions))
+    if start is not None:
+        sessions.append((datetime.now().astimezone() - start).total_seconds() / 60)
     return sessions
 
 
 def _session_records(
     statuses: List[Tuple[datetime, str]]
 ) -> List[Tuple[datetime, datetime, float]]:
-    """Return session start/end and duration in minutes."""
     sessions: List[Tuple[datetime, datetime, float]] = []
     start: datetime | None = None
     for ts, status in statuses:
@@ -167,58 +261,43 @@ def _session_records(
                 dur = (ts - start).total_seconds() / 60
                 sessions.append((start, ts, dur))
                 start = None
-    logger.debug("Computed %d session records", len(sessions))
     return sessions
 
 
 def _recent_status_history(
-    conn: sqlite3.Connection,
+    conn: Connection,
     since: datetime,
     until: datetime | None = None,
 ) -> Dict[PortKey, List[Tuple[datetime, str]]]:
-    """Return status history for each port since a given time."""
-    logger.debug("Fetching status history since %s until %s", since, until)
-    params = [since.isoformat()]
-    query = (
-        "SELECT location_id, station_id, port_id, ts, status FROM port_status "
-        "WHERE ts >= ?"
-    )
+    params: List[Any] = [since.isoformat()]
+    query = [
+        "SELECT location_id, station_id, port_id, ts, status",
+        "FROM port_status",
+        "WHERE ts >= %s",
+    ]
     if until is not None:
-        query += " AND ts <= ?"
+        query.append("AND ts <= %s")
         params.append(until.isoformat())
-    query += " ORDER BY location_id, station_id, port_id, ts"
-    cur = conn.execute(query, params)
+    query.append("ORDER BY location_id, station_id, port_id, ts")
+    sql = " ".join(query)
     history: Dict[PortKey, List[Tuple[datetime, str]]] = {}
-    for loc, sta, port, ts, status in cur:
-        key = (loc, sta, port)
-        history.setdefault(key, []).append((datetime.fromisoformat(ts), status))
-    logger.debug("Loaded status history for %d ports", len(history))
+    with _with_cursor(conn) as cur:
+        cur.execute(sql, params)
+        for loc, sta, port, ts_str, status in cur.fetchall():
+            key = (loc, sta, port)
+            history.setdefault(key, []).append((datetime.fromisoformat(ts_str), status))
     return history
 
 
-def recent_sessions(conn: sqlite3.Connection, since: datetime) -> Dict[PortKey, List[float]]:
-    """Get session durations for each port since a given time."""
-    logger.debug("Fetching sessions since %s", since)
-    cur = conn.execute(
-        "SELECT location_id, station_id, port_id, ts, status FROM port_status WHERE ts >= ? ORDER BY location_id, station_id, port_id, ts",
-        (since.isoformat(),),
-    )
-    history: Dict[PortKey, List[Tuple[datetime, str]]] = {}
-    for loc, sta, port, ts, status in cur:
-        key = (loc, sta, port)
-        history.setdefault(key, []).append((datetime.fromisoformat(ts), status))
-    result = {k: _session_durations(v) for k, v in history.items()}
-    logger.debug("Loaded history for %d ports", len(result))
-    return result
+def recent_sessions(conn: Connection, since: datetime) -> Dict[PortKey, List[float]]:
+    history = _recent_status_history(conn, since)
+    return {k: _session_durations(v) for k, v in history.items()}
 
 
-def analyze_recent(conn: sqlite3.Connection, days: int = 7, short_threshold: int = 3) -> List[Dict[str, Any]]:
-    """Return problematic chargers based on recent history."""
+def analyze_recent(conn: Connection, days: int = 7, short_threshold: int = 3) -> List[Dict[str, Any]]:
     since = datetime.now().astimezone() - timedelta(days=days)
-    logger.debug("Analyzing recent data since %s", since)
     sessions = recent_sessions(conn, since)
     problematic: List[Dict[str, Any]] = []
-    rule_counts: Dict[str, int] = {"unused": 0, "no_long": 0, "unavailable": 0}
     for (loc, sta, port), durs in sessions.items():
         if not durs:
             problematic.append(
@@ -230,7 +309,6 @@ def analyze_recent(conn: sqlite3.Connection, days: int = 7, short_threshold: int
                     "reason": "no sessions",
                 }
             )
-            logger.debug("Port %s has no sessions", port)
             continue
         short = [d for d in durs if d < short_threshold]
         if short:
@@ -243,26 +321,18 @@ def analyze_recent(conn: sqlite3.Connection, days: int = 7, short_threshold: int
                     "reason": f"short sessions: {len(short)}",
                 }
             )
-            logger.debug("Port %s has %d short sessions", port, len(short))
-            continue
-
-        logger.debug("Port %s is healthy", port)
-
-    logger.debug("Identified %d problematic ports", len(problematic))
     return problematic
 
 
 def analyze_chargers(
-    conn: sqlite3.Connection,
+    conn: Connection,
     rules: Rules | None = None,
     *,
     now: datetime | None = None,
     history: Dict[PortKey, List[Tuple[datetime, str]]] | None = None,
 ) -> tuple[list[Dict[str, Any]], Dict[str, int]]:
-    """Classify chargers as problematic based on configurable rules."""
     if rules is None:
         rules = Rules()
-
     if now is None:
         now = datetime.now().astimezone()
     earliest = now - timedelta(
@@ -273,16 +343,11 @@ def analyze_chargers(
     else:
         filtered: Dict[PortKey, List[Tuple[datetime, str]]] = {}
         for key, events in history.items():
-            ev = [
-                (ts, st)
-                for ts, st in events
-                if earliest <= ts <= now
-            ]
+            ev = [(ts, st) for ts, st in events if earliest <= ts <= now]
             if ev:
                 filtered[key] = ev
         history = filtered
 
-    # Organize data per station
     stations: Dict[Tuple[str | None, str | None], Dict[str | None, List[Tuple[datetime, str]]]] = {}
     for (loc, sta, port), events in history.items():
         stations.setdefault((loc, sta), {})[port] = events
@@ -291,12 +356,9 @@ def analyze_chargers(
     rule_counts: Dict[str, int] = {"unused": 0, "no_long": 0, "unavailable": 0}
     for (loc, sta), ports in stations.items():
         reasons: List[str] = []
-
-        # Determine how much history we have for this charger
         earliest_ts = min(ts for events in ports.values() for ts, _ in events)
         history_span = now - earliest_ts
 
-        # Rule 1: no usage for more than N days
         if history_span >= timedelta(days=rules.unused_days):
             since_unused = now - timedelta(days=rules.unused_days)
             used_recently = any(
@@ -306,12 +368,7 @@ def analyze_chargers(
             if not used_recently:
                 reasons.append(f"unused > {rules.unused_days}d")
                 rule_counts["unused"] += 1
-        else:
-            logger.debug(
-                "Skipping unused rule for %s/%s due to insufficient history", loc, sta
-            )
 
-        # Rule 2: no long sessions in past window
         if history_span >= timedelta(days=rules.long_session_days):
             since_long = now - timedelta(days=rules.long_session_days)
             has_long = any(
@@ -326,12 +383,7 @@ def analyze_chargers(
                     f"no session >= {rules.long_session_min}min in {rules.long_session_days}d"
                 )
                 rule_counts["no_long"] += 1
-        else:
-            logger.debug(
-                "Skipping long session rule for %s/%s due to insufficient history", loc, sta
-            )
 
-        # Rule 3: all ports unavailable for continuous hours
         if history_span >= timedelta(hours=rules.unavailable_hours):
             since_unavail = now - timedelta(hours=rules.unavailable_hours)
             all_unavail = True
@@ -349,10 +401,6 @@ def analyze_chargers(
             if all_unavail and ports:
                 reasons.append(f"unavailable > {rules.unavailable_hours}h")
                 rule_counts["unavailable"] += 1
-        else:
-            logger.debug(
-                "Skipping unavailable rule for %s/%s due to insufficient history", loc, sta
-            )
 
         if reasons:
             problematic.append(
@@ -364,17 +412,11 @@ def analyze_chargers(
                     "reason": ", ".join(reasons),
                 }
             )
-        else:
-            logger.debug("Charger %s/%s is healthy", loc, sta)
-
-    logger.debug("Identified %d problematic chargers", len(problematic))
     return problematic, rule_counts
 
 
-def _latest_records(conn: sqlite3.Connection) -> List[Dict[str, Any]]:
-    """Return the most recent status entry for each port."""
-    cur = conn.execute(
-        """
+def _latest_records(conn: Connection) -> List[Dict[str, Any]]:
+    query = """
         SELECT ps.location_id, ps.station_id, ps.port_id, ps.status, ps.last_updated
         FROM port_status ps
         JOIN (
@@ -382,60 +424,55 @@ def _latest_records(conn: sqlite3.Connection) -> List[Dict[str, Any]]:
             FROM port_status
             GROUP BY location_id, station_id, port_id
         ) latest
-        ON ps.location_id = latest.location_id
-        AND ps.station_id = latest.station_id
-        AND ps.port_id = latest.port_id
+        ON ps.location_id <=> latest.location_id
+        AND ps.station_id <=> latest.station_id
+        AND ps.port_id <=> latest.port_id
         AND ps.ts = latest.max_ts
-        """
-    )
-    return [
-        {
-            "location_id": loc,
-            "station_id": sta,
-            "port_id": port,
-            "status": status,
-            "last_updated": last,
-        }
-        for loc, sta, port, status, last in cur
-    ]
+    """
+    results: List[Dict[str, Any]] = []
+    with _with_cursor(conn) as cur:
+        cur.execute(query)
+        for loc, sta, port, status, last in cur.fetchall():
+            results.append(
+                {
+                    "location_id": loc,
+                    "station_id": sta,
+                    "port_id": port,
+                    "status": status,
+                    "last_updated": last,
+                }
+            )
+    return results
 
 
-def _all_history(conn: sqlite3.Connection) -> Dict[PortKey, List[Tuple[datetime, str]]]:
-    """Return full status history grouped by port."""
-    cur = conn.execute(
-        "SELECT location_id, station_id, port_id, ts, status FROM port_status ORDER BY location_id, station_id, port_id, ts"
-    )
+def _all_history(conn: Connection) -> Dict[PortKey, List[Tuple[datetime, str]]]:
     history: Dict[PortKey, List[Tuple[datetime, str]]] = {}
-    for loc, sta, port, ts, status in cur:
-        history.setdefault((loc, sta, port), []).append((datetime.fromisoformat(ts), status))
+    with _with_cursor(conn) as cur:
+        cur.execute(
+            "SELECT location_id, station_id, port_id, ts, status FROM port_status ORDER BY location_id, station_id, port_id, ts"
+        )
+        for loc, sta, port, ts_str, status in cur.fetchall():
+            history.setdefault((loc, sta, port), []).append((datetime.fromisoformat(ts_str), status))
     return history
 
 
 def _count_unused_chargers(
-    conn: sqlite3.Connection,
+    conn: Connection,
     days: int,
     now: datetime,
     history: Dict[PortKey, List[Tuple[datetime, str]]] | None = None,
 ) -> int:
-    """Return the number of chargers unused for more than ``days``."""
     if history is None:
-        # Load all available history so chargers with no recent events are
-        # included in the count. ``_all_history`` is bounded by the data
-        # retention policy so this remains inexpensive.
         history = _all_history(conn)
     else:
-        # Trim any events in the future but keep older ones so we can detect
-        # chargers with no records in the desired window.
         history = {
             k: [(ts, st) for ts, st in v if ts <= now]
             for k, v in history.items()
             if any(ts <= now for ts, _ in v)
         }
-
     stations: Dict[Tuple[str | None, str | None], Dict[str | None, List[Tuple[datetime, str]]]] = {}
     for (loc, sta, port), events in history.items():
         stations.setdefault((loc, sta), {})[port] = events
-
     count = 0
     for ports in stations.values():
         earliest_ts = min(ts for events in ports.values() for ts, _ in events)
@@ -451,8 +488,7 @@ def _count_unused_chargers(
     return count
 
 
-def stats_from_db(conn: sqlite3.Connection) -> Dict[str, float]:
-    """Compute statistics based on data stored in the database."""
+def stats_from_db(conn: Connection) -> Dict[str, float]:
     latest = _latest_records(conn)
     stats = stats_mod.from_records(latest)
     history = _all_history(conn)
@@ -470,21 +506,17 @@ def stats_from_db(conn: sqlite3.Connection) -> Dict[str, float]:
                 durations.append(dur)
     stats["avg_session_min"] = sum(durations) / len(durations) if durations else 0.0
 
-    # Count charging sessions that started since midnight today
     today = datetime.now().astimezone().replace(hour=0, minute=0, second=0, microsecond=0)
     charges_today = 0
     for events in history.values():
-        for start, end, _ in _session_records(events):
+        for start, _, _ in _session_records(events):
             if start >= today:
                 charges_today += 1
     stats["charges_today"] = charges_today
     return stats
 
 
-def timeline_stats(
-    conn: sqlite3.Connection, rules: Rules | None = None
-) -> List[Dict[str, Any]]:
-    """Return aggregated statistics every 15 minutes for the past week."""
+def timeline_stats(conn: Connection, rules: Rules | None = None) -> List[Dict[str, Any]]:
     since = datetime.now().astimezone() - timedelta(days=7)
     if rules is None:
         rules = Rules()
@@ -559,31 +591,29 @@ def timeline_stats(
                 ),
             }
         )
-    logger.debug("Loaded timeline with %d points", len(result))
     return result
 
 
 def charger_sessions(
-    conn: sqlite3.Connection,
+    conn: Connection,
     location_id: str | None,
     station_id: str | None,
     limit: int = 10,
 ) -> Dict[str | None, List[Dict[str, Any]]]:
-    """Return recent charging sessions for all ports of a charger."""
     since = datetime.now().astimezone() - timedelta(days=MAX_DATA_AGE_DAYS)
-    cur = conn.execute(
-        """
-        SELECT port_id, ts, status
-        FROM port_status
-        WHERE location_id IS ? AND station_id IS ? AND ts >= ?
-        ORDER BY port_id, ts
-        """,
-        (location_id, station_id, since.isoformat()),
-    )
     history: Dict[str | None, List[Tuple[datetime, str]]] = {}
-    for port, ts, status in cur:
-        history.setdefault(port, []).append((datetime.fromisoformat(ts), status))
-
+    with _with_cursor(conn) as cur:
+        cur.execute(
+            """
+            SELECT port_id, ts, status
+            FROM port_status
+            WHERE location_id <=> %s AND station_id <=> %s AND ts >= %s
+            ORDER BY port_id, ts
+            """,
+            (location_id, station_id, since.isoformat()),
+        )
+        for port, ts_str, status in cur.fetchall():
+            history.setdefault(port, []).append((datetime.fromisoformat(ts_str), status))
     result: Dict[str | None, List[Dict[str, Any]]] = {}
     for port, events in history.items():
         sessions = _session_records(events)
@@ -597,24 +627,24 @@ def charger_sessions(
             }
             for s, e, dur in trimmed
         ]
-    logger.debug(
-        "Loaded %d session lists for charger %s/%s", len(result), location_id, station_id
-    )
     return result
 
 
-def sessions_per_day(
-    conn: sqlite3.Connection, days: int = 7
-) -> List[Dict[str, Any]]:
-    """Return number of charging sessions started each day."""
+def sessions_per_day(conn: Connection, days: int = 7) -> List[Dict[str, Any]]:
     since = datetime.now().astimezone() - timedelta(days=days)
-    cur = conn.execute(
-        "SELECT location_id, station_id, port_id, ts, status FROM port_status WHERE ts >= ? ORDER BY location_id, station_id, port_id, ts",
-        (since.isoformat(),),
-    )
     history: Dict[PortKey, List[Tuple[datetime, str]]] = {}
-    for loc, sta, port, ts, status in cur:
-        history.setdefault((loc, sta, port), []).append((datetime.fromisoformat(ts), status))
+    with _with_cursor(conn) as cur:
+        cur.execute(
+            """
+            SELECT location_id, station_id, port_id, ts, status
+            FROM port_status
+            WHERE ts >= %s
+            ORDER BY location_id, station_id, port_id, ts
+            """,
+            (since.isoformat(),),
+        )
+        for loc, sta, port, ts_str, status in cur.fetchall():
+            history.setdefault((loc, sta, port), []).append((datetime.fromisoformat(ts_str), status))
 
     counts: Dict[str, int] = {}
     for events in history.values():

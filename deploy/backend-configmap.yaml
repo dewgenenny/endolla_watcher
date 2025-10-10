@@ -4,7 +4,7 @@ metadata:
   name: endolla-backend-config
   namespace: endolla-watcher
 data:
-  ENDOLLA_DB_PATH: "/data/endolla.db"
+  ENDOLLA_DB_URL: "mysql+pymysql://endolla:endolla@endolla-mysql:3306/endolla"
   ENDOLLA_FETCH_INTERVAL: "300"
   ENDOLLA_AUTO_FETCH: "1"
   ENDOLLA_RULE_UNUSED_DAYS: "7"

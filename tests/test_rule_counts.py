@@ -1,11 +1,10 @@
+from datetime import datetime, timedelta, timezone
+
 import endolla_watcher.storage as storage
 from endolla_watcher.rules import Rules
-from datetime import datetime, timedelta, timezone
-from pathlib import Path
 
 
-def test_rule_counts():
-    conn = storage.connect(Path(":memory:"))
+def test_rule_counts(conn):
     now = datetime.now(timezone.utc)
 
     # Port 1 - unused
@@ -49,4 +48,3 @@ def test_rule_counts():
     assert counts["no_long"] == 2
     assert counts["unavailable"] == 1
     assert len(problematic) == 3
-    conn.close()

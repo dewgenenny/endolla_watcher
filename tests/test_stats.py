@@ -1,12 +1,9 @@
-import sqlite3
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 
 import endolla_watcher.storage as storage
 
 
-def test_average_session_last_day():
-    conn = storage.connect(Path(":memory:"))
+def test_average_session_last_day(conn):
     now = datetime.now(timezone.utc)
 
     old_start = now - timedelta(days=2)
@@ -39,11 +36,13 @@ def test_average_session_last_day():
     assert stats["avg_session_min"] == 60
     assert stats["short_sessions"] == 0
     assert stats["charges_today"] == 1
-    conn.close()
+    stats = storage.stats_from_db(conn)
+    assert stats["avg_session_min"] == 60
+    assert stats["short_sessions"] == 0
+    assert stats["charges_today"] == 1
 
 
-def test_count_short_sessions():
-    conn = storage.connect(Path(":memory:"))
+def test_count_short_sessions(conn):
     now = datetime.now(timezone.utc)
 
     start = now - timedelta(hours=1)
@@ -63,11 +62,9 @@ def test_count_short_sessions():
     stats = storage.stats_from_db(conn)
     assert stats["short_sessions"] == 1
     assert stats["charges_today"] == 1
-    conn.close()
 
 
-def test_sessions_per_day_counts_active_sessions():
-    conn = storage.connect(Path(":memory:"))
+def test_sessions_per_day_counts_active_sessions(conn):
     now = datetime.now(timezone.utc)
 
     base = now - timedelta(hours=2)
@@ -102,4 +99,3 @@ def test_sessions_per_day_counts_active_sessions():
 
     sessions = storage.sessions_per_day(conn, days=2)
     assert sessions[-1]["sessions"] == 1
-    conn.close()

@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 class Settings:
     """Runtime configuration for the backend service."""
 
-    db_path: Path
+    db_url: str
     dataset_file: Path | None
     fetch_interval: int
     auto_fetch: bool
@@ -44,7 +44,9 @@ def _parse_bool(value: Optional[str], default: bool) -> bool:
 def load_settings() -> Settings:
     """Load backend configuration from environment variables."""
 
-    db_path = Path(os.getenv("ENDOLLA_DB_PATH", "/data/endolla.db"))
+    db_url = os.getenv("ENDOLLA_DB_URL")
+    if not db_url:
+        raise RuntimeError("ENDOLLA_DB_URL must be configured")
     dataset_file_env = os.getenv("ENDOLLA_DATA_FILE")
     dataset_file = Path(dataset_file_env) if dataset_file_env else None
     fetch_interval = int(os.getenv("ENDOLLA_FETCH_INTERVAL", "300"))
@@ -75,7 +77,7 @@ def load_settings() -> Settings:
     debug = _parse_bool(os.getenv("ENDOLLA_DEBUG"), False)
 
     return Settings(
-        db_path=db_path,
+        db_url=db_url,
         dataset_file=dataset_file,
         fetch_interval=fetch_interval,
         auto_fetch=auto_fetch,
@@ -107,7 +109,7 @@ async def _load_locations(settings: Settings) -> Dict[str, Dict[str, float]]:
 
 async def _fetch_once(settings: Settings) -> None:
     try:
-        await asyncio.to_thread(fetch_once, settings.db_path, settings.dataset_file)
+        await asyncio.to_thread(fetch_once, settings.db_url, settings.dataset_file)
         app.state.last_fetch = datetime.now().astimezone().isoformat(timespec="seconds")
     except Exception:  # pragma: no cover - defensive logging
         logger.exception("Dataset fetch failed")
@@ -125,11 +127,13 @@ async def _fetch_loop(settings: Settings) -> None:
 
 
 def _connect_db(settings: Settings):
-    return storage.connect(settings.db_path)
+    return storage.connect(settings.db_url)
 
 
 def _latest_snapshot(conn) -> str | None:
-    row = conn.execute("SELECT MAX(ts) FROM port_status").fetchone()
+    with conn.cursor() as cur:
+        cur.execute("SELECT MAX(ts) FROM port_status")
+        row = cur.fetchone()
     if row and row[0]:
         return str(row[0])
     return None
@@ -170,7 +174,7 @@ async def on_startup() -> None:
     settings = load_settings()
     setup_logging(settings.debug)
     logger.debug("Loaded settings: %s", settings)
-    settings.db_path.parent.mkdir(parents=True, exist_ok=True)
+    # MySQL connections do not require local directories to exist.
     app.state.settings = settings
     if settings.cors_origins != _INITIAL_SETTINGS.cors_origins:
         logger.warning(

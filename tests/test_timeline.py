@@ -1,12 +1,9 @@
-import sqlite3
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 
 import endolla_watcher.storage as storage
 
 
-def test_timeline_stats():
-    conn = storage.connect(Path(":memory:"))
+def test_timeline_stats(conn):
     now = datetime.now(timezone.utc)
     day1 = now - timedelta(days=1)
     day2 = now
@@ -66,5 +63,3 @@ def test_timeline_stats():
     assert second["charging"] == 1
     assert second["unavailable"] == 0
     assert second["problematic"] == 0
-
-    conn.close()

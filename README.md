@@ -18,12 +18,12 @@ pip install -r requirements.txt
 pip install -e .
 ```
 
-Start the FastAPI backend with uvicorn. The example below stores the SQLite
-database in the repository directory and disables the fetch loop so you can feed
-fixture data manually during development:
+Start the FastAPI backend with uvicorn. Provide a MySQL URL and disable the
+fetch loop so you can feed fixture data manually during development:
 
 ```
-ENDOLLA_DB_PATH=./endolla.db ENDOLLA_AUTO_FETCH=0 uvicorn endolla_watcher.api:app --reload
+ENDOLLA_DB_URL=mysql+pymysql://user:pass@localhost:3306/endolla \
+ENDOLLA_AUTO_FETCH=0 uvicorn endolla_watcher.api:app --reload
 ```
 
 You can still generate static reports for debugging with the legacy CLI tools:
@@ -31,7 +31,8 @@ You can still generate static reports for debugging with the legacy CLI tools:
 ```
 python -m endolla_watcher.main --file endolla.json --output site/index.html
 python -m endolla_watcher.loop --fetch-interval 60 --update-interval 3600 \
-    --db endolla.db --unused-days 7 --long-session-days 2 \
+    --db-url mysql+pymysql://user:pass@localhost:3306/endolla \
+    --unused-days 7 --long-session-days 2 \
     --long-session-min 5 --unavailable-hours 24
 ```
 
@@ -47,20 +48,23 @@ frontend at a remote backend while developing locally.
 
 ## Database
 
-Snapshots are stored in a SQLite database. Old records are automatically pruned
-so the database only keeps the last four weeks of history. The application
-checks the schema version when it opens the database and applies any pending
-migrations automatically. If you prefer to upgrade a database manually you can
-run:
+Snapshots are now stored in MySQL. Old records are automatically pruned so the
+database only keeps the last four weeks of history. The application checks the
+schema version when it opens the database and applies any pending migrations
+automatically.
+
+If you are migrating from a previous SQLite deployment run the migration tool
+once to import existing history:
 
 ```
-python -m endolla_watcher.migrate --db endolla.db
+python -m endolla_watcher.migrate --sqlite endolla.db \
+    --db-url mysql+pymysql://user:pass@localhost:3306/endolla
 ```
 
 To review the current size and reclaim unused space you can run:
 
 ```
-python -m endolla_watcher.db --db endolla.db --compress
+python -m endolla_watcher.db --db-url mysql+pymysql://user:pass@localhost:3306/endolla --compress
 ```
 
 Omit `--compress` to only display basic database statistics.
@@ -75,13 +79,12 @@ Two containers are published from this repository:
 * **Frontend:** `docker build -t endolla-watcher-frontend frontend/` builds a
   static NGINX image that serves the dashboard assets.
 
-Run the backend locally with persistent storage mounted at `/data` to keep the
-SQLite database between restarts:
+Run the backend locally by pointing it at a MySQL instance reachable from the
+container:
 
 ```
 docker run -p 8000:8000 \
-           -e ENDOLLA_DB_PATH=/data/endolla.db \
-           -v $(pwd)/data:/data \
+           -e ENDOLLA_DB_URL=mysql+pymysql://user:pass@host:3306/endolla \
            endolla-watcher-backend
 ```
 
@@ -97,13 +100,16 @@ while other paths are served by the frontend container.
 ## Argo CD deployment
 
 Kubernetes manifests suitable for Argo CD live under the `deploy/` directory.
-They provision separate deployments for the backend API and the static frontend.
-The backend is backed by a persistent volume claim so the SQLite database
-survives pod restarts. The manifests are managed via Kustomize and can be
-synchronised by Argo CD using the example application specification in
+They provision separate deployments for the backend API and the static frontend,
+alongside an in-cluster MySQL StatefulSet that keeps data on a persistent
+volume. Credentials for the database are defined in
+`deploy/mysql-secret.yaml`, and the backend ConfigMap points to the
+cluster-internal service name. The manifests are managed via Kustomize and can
+be synchronised by Argo CD using the example application specification in
 `argocd/application.yaml`.
 
 Update the ConfigMap with any custom rule values, adjust the container image
-references and configure your ingress controller to route `/api` to the backend
-service. Everything else can point to the frontend service to deliver the
-updated dashboard without relying on GitHub Pages.
+references and rotate the database credentials as required. Configure your
+ingress controller to route `/api` to the backend service. Everything else can
+point to the frontend service to deliver the updated dashboard without relying
+on GitHub Pages.
