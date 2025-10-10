@@ -8,5 +8,12 @@ resources:
   - backend-service.yaml
   - frontend-deployment.yaml
   - frontend-service.yaml
+images:
+  - name: ghcr.io/dewgenenny/endolla-watcher-backend
+    newName: ghcr.io/dewgenenny/endolla-watcher-backend
+    newTag: latest
+  - name: ghcr.io/dewgenenny/endolla-watcher-frontend
+    newName: ghcr.io/dewgenenny/endolla-watcher-frontend
+    newTag: latest
 commonLabels:
   app.kubernetes.io/part-of: endolla-watcher
