@@ -11,7 +11,7 @@ const chargesChartCanvas = document.getElementById('charges-chart');
 const chargesStatus = document.getElementById('charges-chart-status');
 const chargesTotalEl = document.getElementById('charges-total');
 const chargesRangeWindow = document.getElementById('charges-range-window');
-const chargesRangeSelect = document.getElementById('charges-range');
+const chargesRangeControl = document.getElementById('charges-range');
 
 let chargesChart;
 let dashboardController;
@@ -102,6 +102,35 @@ const formatRange = (startIso, endIso) => {
     endOptions.year = 'numeric';
   }
   return `${start.toLocaleDateString(undefined, startOptions)} – ${end.toLocaleDateString(undefined, endOptions)}`;
+};
+
+const getRangeOptions = () => {
+  if (!chargesRangeControl) {
+    return [];
+  }
+  return Array.from(chargesRangeControl.querySelectorAll('[data-value]'));
+};
+
+const setRangeSelection = (value) => {
+  if (!chargesRangeControl) {
+    return;
+  }
+  const normalizedValue = String(clampDays(value));
+  const options = getRangeOptions();
+  if (options.length === 0) {
+    chargesRangeControl.dataset.selected = normalizedValue;
+    return;
+  }
+  const activeOption =
+    options.find((option) => option.dataset.value === normalizedValue) ?? options[0];
+  const targetValue = activeOption.dataset.value;
+  chargesRangeControl.dataset.selected = targetValue;
+  options.forEach((option) => {
+    const isActive = option === activeOption;
+    option.classList.toggle('is-active', isActive);
+    option.setAttribute('aria-checked', isActive ? 'true' : 'false');
+    option.tabIndex = isActive ? 0 : -1;
+  });
 };
 
 const setChartStatus = (message) => {
@@ -405,8 +434,8 @@ const showError = (error) => {
 
 const loadDashboard = async (days = DEFAULT_DAYS) => {
   const targetDays = clampDays(days);
-  if (chargesRangeSelect && chargesRangeSelect.value !== String(targetDays)) {
-    chargesRangeSelect.value = String(targetDays);
+  if (chargesRangeControl) {
+    setRangeSelection(String(targetDays));
   }
   if (dashboardController) {
     dashboardController.abort();
@@ -444,10 +473,62 @@ const loadDashboard = async (days = DEFAULT_DAYS) => {
   }
 };
 
-if (chargesRangeSelect) {
-  chargesRangeSelect.addEventListener('change', (event) => {
-    loadDashboard(event.target.value);
+if (chargesRangeControl) {
+  const focusOption = (option) => {
+    if (!option) {
+      return;
+    }
+    option.focus();
+  };
+
+  chargesRangeControl.addEventListener('click', (event) => {
+    const option = event.target.closest('[data-value]');
+    if (!option || !chargesRangeControl.contains(option)) {
+      return;
+    }
+    const { value } = option.dataset;
+    if (!value) {
+      return;
+    }
+    if (chargesRangeControl.dataset.selected !== value) {
+      setRangeSelection(value);
+      loadDashboard(value);
+    }
+    focusOption(option);
   });
+
+  chargesRangeControl.addEventListener('keydown', (event) => {
+    const navigationKeys = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'];
+    if (!navigationKeys.includes(event.key)) {
+      return;
+    }
+    event.preventDefault();
+    const options = getRangeOptions();
+    if (!options.length) {
+      return;
+    }
+    const currentValue = chargesRangeControl.dataset.selected || options[0].dataset.value;
+    const currentIndex = options.findIndex((option) => option.dataset.value === currentValue);
+    let nextIndex = currentIndex === -1 ? 0 : currentIndex;
+    if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
+      nextIndex = currentIndex <= 0 ? options.length - 1 : currentIndex - 1;
+    } else if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
+      nextIndex = currentIndex >= options.length - 1 ? 0 : currentIndex + 1;
+    } else if (event.key === 'Home') {
+      nextIndex = 0;
+    } else if (event.key === 'End') {
+      nextIndex = options.length - 1;
+    }
+    const nextOption = options[nextIndex];
+    if (nextOption) {
+      const { value } = nextOption.dataset;
+      setRangeSelection(value);
+      focusOption(nextOption);
+      loadDashboard(value);
+    }
+  });
+
+  setRangeSelection(String(DEFAULT_DAYS));
 }
 
 loadDashboard(DEFAULT_DAYS);
