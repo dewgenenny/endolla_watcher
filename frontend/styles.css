@@ -134,6 +134,10 @@ h2 {
   z-index: 2;
 }
 
+.chart-status[hidden] {
+  display: none !important;
+}
+
 .range-select {
   display: inline-flex;
   align-items: center;
