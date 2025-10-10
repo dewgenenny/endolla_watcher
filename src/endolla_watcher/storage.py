@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import os
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Iterable, Iterator, List, Sequence, Tuple
@@ -88,6 +89,7 @@ SCHEMA_STATEMENTS: Sequence[str] = (
 CURRENT_SCHEMA_VERSION = 1
 
 
+@contextmanager
 def _with_cursor(conn: Connection) -> Iterator[pymysql.cursors.Cursor]:
     cursor = conn.cursor()
     try:
