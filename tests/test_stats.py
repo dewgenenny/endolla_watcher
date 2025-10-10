@@ -64,3 +64,42 @@ def test_count_short_sessions():
     assert stats["short_sessions"] == 1
     assert stats["charges_today"] == 1
     conn.close()
+
+
+def test_sessions_per_day_counts_active_sessions():
+    conn = storage.connect(Path(":memory:"))
+    now = datetime.now(timezone.utc)
+
+    base = now - timedelta(hours=2)
+    active = now - timedelta(hours=1)
+
+    storage.save_snapshot(
+        conn,
+        [
+            {
+                "location_id": "L1",
+                "station_id": "S1",
+                "port_id": "P1",
+                "status": "AVAILABLE",
+                "last_updated": base.isoformat(),
+            }
+        ],
+        ts=base,
+    )
+    storage.save_snapshot(
+        conn,
+        [
+            {
+                "location_id": "L1",
+                "station_id": "S1",
+                "port_id": "P1",
+                "status": "IN_USE",
+                "last_updated": active.isoformat(),
+            }
+        ],
+        ts=active,
+    )
+
+    sessions = storage.sessions_per_day(conn, days=2)
+    assert sessions[-1]["sessions"] == 1
+    conn.close()

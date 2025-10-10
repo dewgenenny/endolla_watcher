@@ -618,10 +618,13 @@ def sessions_per_day(
 
     counts: Dict[str, int] = {}
     for events in history.values():
-        for start, _, _ in _session_records(events):
-            if start >= since:
-                day = start.date().isoformat()
-                counts[day] = counts.get(day, 0) + 1
+        last_status: str | None = None
+        for ts, status in events:
+            if status == "IN_USE" and last_status != "IN_USE":
+                if ts >= since:
+                    day = ts.date().isoformat()
+                    counts[day] = counts.get(day, 0) + 1
+            last_status = status
     result = []
     for i in range(days - 1, -1, -1):
         day = (datetime.now().astimezone() - timedelta(days=i)).date().isoformat()
