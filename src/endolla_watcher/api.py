@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import time
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
@@ -34,6 +35,7 @@ class Settings:
     rules: Rules
     cors_origins: list[str]
     debug: bool
+    dashboard_cache_ttl: int
 
 
 def _parse_bool(value: Optional[str], default: bool) -> bool:
@@ -76,6 +78,7 @@ def load_settings() -> Settings:
     cors_env = os.getenv("ENDOLLA_CORS_ORIGINS", "*")
     cors_origins = [origin.strip() for origin in cors_env.split(",") if origin.strip()]
     debug = _parse_bool(os.getenv("ENDOLLA_DEBUG"), False)
+    dashboard_cache_ttl = int(os.getenv("ENDOLLA_DASHBOARD_CACHE_TTL", "60"))
 
     return Settings(
         db_url=db_url,
@@ -86,6 +89,7 @@ def load_settings() -> Settings:
         rules=rules,
         cors_origins=cors_origins or ["*"],
         debug=debug,
+        dashboard_cache_ttl=dashboard_cache_ttl,
     )
 
 _INITIAL_SETTINGS = load_settings()
@@ -112,6 +116,7 @@ async def _fetch_once(settings: Settings) -> None:
     try:
         await asyncio.to_thread(fetch_once, settings.db_url, settings.dataset_file)
         app.state.last_fetch = datetime.now().astimezone().isoformat(timespec="seconds")
+        await _clear_dashboard_cache()
     except Exception:  # pragma: no cover - defensive logging
         logger.exception("Dataset fetch failed")
 
@@ -158,6 +163,18 @@ def _latest_snapshot(conn) -> str | None:
     if row and row[0]:
         return str(row[0])
     return None
+
+
+async def _clear_dashboard_cache() -> None:
+    cache: Dict[Any, Dict[str, Any]] | None = getattr(app.state, "dashboard_cache", None)
+    if cache is None:
+        return
+    lock: asyncio.Lock | None = getattr(app.state, "dashboard_cache_lock", None)
+    if lock is not None:
+        async with lock:
+            cache.clear()
+    else:  # pragma: no cover - startup initialises the lock
+        cache.clear()
 
 
 def _build_dashboard(
@@ -209,6 +226,8 @@ async def on_startup() -> None:
     app.state.locations = await _load_locations(settings)
     app.state.fetch_task = None
     app.state.last_fetch = None
+    app.state.dashboard_cache: Dict[Any, Dict[str, Any]] = {}
+    app.state.dashboard_cache_lock = asyncio.Lock()
     if settings.auto_fetch:
         await _fetch_once(settings)
         app.state.fetch_task = asyncio.create_task(_fetch_loop(settings))
@@ -255,9 +274,34 @@ async def dashboard(
     granularity_normalized = granularity.lower()
     if granularity_normalized not in {"day", "hour"}:
         raise HTTPException(status_code=422, detail="Unsupported granularity")
-    return await asyncio.to_thread(
+    cache_key = (days, granularity_normalized)
+    ttl = settings.dashboard_cache_ttl
+    cache: Dict[Any, Dict[str, Any]] | None = getattr(app.state, "dashboard_cache", None)
+    lock: asyncio.Lock | None = getattr(app.state, "dashboard_cache_lock", None)
+    if ttl > 0 and cache is not None:
+        now = time.time()
+        cached = cache.get(cache_key)
+        if cached and cached.get("expires", 0) > now:
+            return cached["data"]
+        if cached and cached.get("expires", 0) <= now:
+            if lock is not None:
+                async with lock:
+                    existing = cache.get(cache_key)
+                    if existing and existing.get("expires", 0) <= now:
+                        cache.pop(cache_key, None)
+            else:  # pragma: no cover - startup initialises the lock
+                cache.pop(cache_key, None)
+    data = await asyncio.to_thread(
         _build_dashboard, settings, locations, days, granularity_normalized
     )
+    if ttl > 0 and cache is not None:
+        expires = time.time() + ttl
+        if lock is not None:
+            async with lock:
+                cache[cache_key] = {"data": data, "expires": expires}
+        else:  # pragma: no cover - startup initialises the lock
+            cache[cache_key] = {"data": data, "expires": expires}
+    return data
 
 
 @app.post("/api/refresh", status_code=202)

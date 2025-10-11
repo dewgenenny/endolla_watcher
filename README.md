@@ -30,6 +30,10 @@ ENDOLLA_DB_URL=mysql+pymysql://user:pass@localhost:3306/endolla \
 ENDOLLA_AUTO_FETCH=0 uvicorn endolla_watcher.api:app --reload
 ```
 
+Dashboard responses are cached for 60 seconds by default to make repeated page
+loads more responsive. Adjust this via `ENDOLLA_DASHBOARD_CACHE_TTL` (set to `0`
+to disable caching entirely).
+
 You can still generate static reports for debugging with the legacy CLI tools:
 
 ```
