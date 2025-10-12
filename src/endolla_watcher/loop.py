@@ -16,15 +16,17 @@ from .rules import Rules
 logger = logging.getLogger(__name__)
 
 
-def fetch_once(db_url: str, file: Path | None = None) -> None:
-    """Fetch the dataset and store a snapshot in the database."""
+def fetch_once(db_url: str, file: Path | None = None) -> bool:
+    """Fetch the dataset, update the database, and report whether it changed."""
     logger.debug("Fetching data with file=%s db_url=%s", file, db_url)
     data = fetch_data(file)
     records = parse_usage(data)
     logger.debug("Fetched %d records", len(records))
     conn = storage.connect(db_url)
-    storage.save_snapshot(conn, records)
-    conn.close()
+    try:
+        return storage.save_snapshot(conn, records)
+    finally:
+        conn.close()
 
 
 def update_once(

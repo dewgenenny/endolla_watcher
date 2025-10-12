@@ -275,7 +275,7 @@ def save_snapshot(
     conn: Connection,
     records: Iterable[Dict[str, Any]],
     ts: datetime | None = None,
-) -> None:
+) -> bool:
     if ts is None:
         ts = datetime.now().astimezone()
     ts_iso = ts.isoformat()
@@ -318,6 +318,7 @@ def save_snapshot(
             )
         conn.commit()
     prune_old_data(conn)
+    return bool(new_rows)
 
 
 def _session_durations(

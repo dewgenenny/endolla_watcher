@@ -4,7 +4,6 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-import time
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
@@ -78,6 +77,29 @@ def _parse_cache_presets(value: Optional[str]) -> list[tuple[int, str]]:
         presets.append((days_value, granularity_value))
 
     return presets or default
+
+
+def _cache_presets(settings: Settings) -> list[tuple[int, str]]:
+    """Return the unique dashboard cache presets with required defaults."""
+
+    def _normalise(preset: tuple[int, str]) -> tuple[int, str]:
+        days, granularity = preset
+        return int(days), granularity.lower()
+
+    presets = [_normalise(preset) for preset in settings.dashboard_cache_presets]
+    required = [_normalise((5, "hour")), _normalise((5, "day"))]
+    for preset in required:
+        if preset not in presets:
+            presets.append(preset)
+
+    seen: set[tuple[int, str]] = set()
+    ordered: list[tuple[int, str]] = []
+    for preset in presets:
+        if preset in seen:
+            continue
+        seen.add(preset)
+        ordered.append(preset)
+    return ordered
 
 
 def load_settings() -> Settings:
@@ -154,10 +176,17 @@ async def _load_locations(settings: Settings) -> Dict[str, Dict[str, float]]:
 
 async def _fetch_once(settings: Settings) -> None:
     try:
-        await asyncio.to_thread(fetch_once, settings.db_url, settings.dataset_file)
-        app.state.last_fetch = datetime.now().astimezone().isoformat(timespec="seconds")
-        await _clear_dashboard_cache()
-        await _warm_dashboard_cache(settings)
+        changed = await asyncio.to_thread(
+            fetch_once, settings.db_url, settings.dataset_file
+        )
+        now_iso = datetime.now().astimezone().isoformat(timespec="seconds")
+        app.state.last_fetch = now_iso
+        if changed:
+            logger.info("Dataset changed; refreshing cached dashboard data")
+            app.state.last_data_update = now_iso
+            await _handle_data_refresh(settings)
+        else:
+            logger.debug("No new data detected; cached dashboard data is still valid")
     except Exception:  # pragma: no cover - defensive logging
         logger.exception("Dataset fetch failed")
 
@@ -218,11 +247,13 @@ async def _clear_dashboard_cache() -> None:
         cache.clear()
 
 
-async def _warm_dashboard_cache(settings: Settings) -> None:
-    ttl = settings.dashboard_cache_ttl
-    if ttl <= 0:
-        return
+async def _handle_data_refresh(settings: Settings) -> None:
+    app.state.dashboard_version = getattr(app.state, "dashboard_version", 0) + 1
+    await _clear_dashboard_cache()
+    await _warm_dashboard_cache(settings)
 
+
+async def _warm_dashboard_cache(settings: Settings) -> None:
     cache: Dict[Any, Dict[str, Any]] | None = getattr(app.state, "dashboard_cache", None)
     if cache is None:
         return
@@ -230,7 +261,10 @@ async def _warm_dashboard_cache(settings: Settings) -> None:
     lock: asyncio.Lock | None = getattr(app.state, "dashboard_cache_lock", None)
     locations: Dict[str, Dict[str, float]] = getattr(app.state, "locations", {})
 
-    for days, granularity in settings.dashboard_cache_presets:
+    presets = _cache_presets(settings)
+    version = getattr(app.state, "dashboard_version", 0)
+
+    for days, granularity in presets:
         try:
             data = await asyncio.to_thread(
                 _build_dashboard, settings, locations, days, granularity
@@ -243,12 +277,12 @@ async def _warm_dashboard_cache(settings: Settings) -> None:
             )
             continue
 
-        expires = time.time() + ttl
+        entry = {"data": data, "version": version}
         if lock is not None:
             async with lock:
-                cache[(days, granularity)] = {"data": data, "expires": expires}
+                cache[(days, granularity)] = entry
         else:  # pragma: no cover - startup initialises the lock
-            cache[(days, granularity)] = {"data": data, "expires": expires}
+            cache[(days, granularity)] = entry
 
 
 def _build_dashboard(
@@ -302,6 +336,8 @@ async def on_startup() -> None:
     app.state.last_fetch = None
     app.state.dashboard_cache: Dict[Any, Dict[str, Any]] = {}
     app.state.dashboard_cache_lock = asyncio.Lock()
+    app.state.dashboard_version = 0
+    app.state.last_data_update = None
     if settings.auto_fetch:
         await _fetch_once(settings)
         app.state.fetch_task = asyncio.create_task(_fetch_loop(settings))
@@ -351,32 +387,23 @@ async def dashboard(
     if granularity_normalized not in {"day", "hour"}:
         raise HTTPException(status_code=422, detail="Unsupported granularity")
     cache_key = (days, granularity_normalized)
-    ttl = settings.dashboard_cache_ttl
     cache: Dict[Any, Dict[str, Any]] | None = getattr(app.state, "dashboard_cache", None)
     lock: asyncio.Lock | None = getattr(app.state, "dashboard_cache_lock", None)
-    if ttl > 0 and cache is not None:
-        now = time.time()
+    version = getattr(app.state, "dashboard_version", 0)
+    if cache is not None:
         cached = cache.get(cache_key)
-        if cached and cached.get("expires", 0) > now:
+        if cached and cached.get("version") == version:
             return cached["data"]
-        if cached and cached.get("expires", 0) <= now:
-            if lock is not None:
-                async with lock:
-                    existing = cache.get(cache_key)
-                    if existing and existing.get("expires", 0) <= now:
-                        cache.pop(cache_key, None)
-            else:  # pragma: no cover - startup initialises the lock
-                cache.pop(cache_key, None)
     data = await asyncio.to_thread(
         _build_dashboard, settings, locations, days, granularity_normalized
     )
-    if ttl > 0 and cache is not None:
-        expires = time.time() + ttl
+    if cache is not None:
+        entry = {"data": data, "version": version}
         if lock is not None:
             async with lock:
-                cache[cache_key] = {"data": data, "expires": expires}
+                cache[cache_key] = entry
         else:  # pragma: no cover - startup initialises the lock
-            cache[cache_key] = {"data": data, "expires": expires}
+            cache[cache_key] = entry
     return data
 
 
