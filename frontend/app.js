@@ -52,6 +52,127 @@ let locationWeekChart;
 let locationMap;
 let locationMapMarker;
 
+const UTILIZATION_VIEW_IDS = ['locations', 'stations', 'ports'];
+const UTILIZATION_PAGE_SIZES = [10, 25, 100];
+const UTILIZATION_DEFAULT_PAGE_SIZE = UTILIZATION_PAGE_SIZES[0];
+
+const utilizationViewState = new Map();
+const utilizationLimitControls = new Map();
+const utilizationFooterContainers = new Map();
+
+const getUtilizationViewState = (view) => {
+  if (!UTILIZATION_VIEW_IDS.includes(view)) {
+    return null;
+  }
+  if (!utilizationViewState.has(view)) {
+    utilizationViewState.set(view, {
+      limit: UTILIZATION_DEFAULT_PAGE_SIZE,
+      visible: UTILIZATION_DEFAULT_PAGE_SIZE,
+    });
+  }
+  return utilizationViewState.get(view);
+};
+
+const parseUtilizationPageSize = (value) => {
+  const numeric = Number.parseInt(value, 10);
+  if (UTILIZATION_PAGE_SIZES.includes(numeric)) {
+    return numeric;
+  }
+  return UTILIZATION_DEFAULT_PAGE_SIZE;
+};
+
+const getUtilizationRows = (view) => {
+  if (view === 'locations') {
+    return Array.isArray(utilizationLocationRows) ? utilizationLocationRows : [];
+  }
+  if (view === 'stations') {
+    return Array.isArray(utilizationStationRows) ? utilizationStationRows : [];
+  }
+  if (view === 'ports') {
+    return Array.isArray(utilizationPortRows) ? utilizationPortRows : [];
+  }
+  return [];
+};
+
+const getUtilizationRowCount = (view) => getUtilizationRows(view).length;
+
+const resetUtilizationView = (view) => {
+  const state = getUtilizationViewState(view);
+  if (!state) {
+    return;
+  }
+  const totalRows = getUtilizationRowCount(view);
+  if (totalRows <= 0) {
+    state.visible = 0;
+    return;
+  }
+  const limit = Math.max(1, Number(state.limit) || UTILIZATION_DEFAULT_PAGE_SIZE);
+  state.visible = Math.min(limit, totalRows);
+};
+
+const ensureVisibleRowCount = (view, totalRows) => {
+  const state = getUtilizationViewState(view);
+  if (!state) {
+    return 0;
+  }
+  if (totalRows <= 0) {
+    state.visible = 0;
+    return 0;
+  }
+  const limit = Math.max(1, Number(state.limit) || UTILIZATION_DEFAULT_PAGE_SIZE);
+  if (!Number.isFinite(state.visible) || state.visible <= 0) {
+    state.visible = limit;
+  }
+  state.visible = Math.min(Math.max(state.visible, limit), totalRows);
+  return state.visible;
+};
+
+const clearUtilizationFooter = (view) => {
+  const footer = utilizationFooterContainers.get(view);
+  if (!footer) {
+    return;
+  }
+  footer.innerHTML = '';
+  footer.hidden = true;
+};
+
+const updateUtilizationFooter = (view, totalRows, visibleRows) => {
+  const footer = utilizationFooterContainers.get(view);
+  if (!footer) {
+    return;
+  }
+  if (!Number.isFinite(totalRows) || totalRows <= 0) {
+    clearUtilizationFooter(view);
+    return;
+  }
+
+  const state = getUtilizationViewState(view);
+  const limit = Math.max(1, Number(state?.limit) || UTILIZATION_DEFAULT_PAGE_SIZE);
+  const remaining = Math.max(totalRows - visibleRows, 0);
+  footer.hidden = false;
+  footer.innerHTML = '';
+
+  const summary = document.createElement('p');
+  summary.className = 'utilization-footer-summary';
+  summary.textContent =
+    visibleRows < totalRows
+      ? `Showing top ${formatNumber(visibleRows)} of ${formatNumber(totalRows)} results.`
+      : `Showing all ${formatNumber(totalRows)} results.`;
+  footer.appendChild(summary);
+
+  if (remaining > 0) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'utilization-footer-button';
+    button.dataset.utilizationMore = view;
+    const increment = Math.min(limit, remaining);
+    button.textContent = `Load ${formatNumber(increment)} more`;
+    button.title = button.textContent;
+    button.setAttribute('aria-label', `Load ${formatNumber(increment)} more ${view}`);
+    footer.appendChild(button);
+  }
+};
+
 const chargesGlowPlugin = {
   id: 'chargesGlow',
   beforeDatasetsDraw(chart, _args, pluginOptions) {
@@ -273,11 +394,13 @@ const renderUtilizationLocationRows = () => {
 
   if (utilizationLocationRows === null) {
     renderTableMessage(utilizationLocationsBody, 'Loading location utilization…');
+    clearUtilizationFooter('locations');
     return;
   }
 
   if (!Array.isArray(utilizationLocationRows) || utilizationLocationRows.length === 0) {
     renderTableMessage(utilizationLocationsBody, 'Location utilization data unavailable.');
+    clearUtilizationFooter('locations');
     return;
   }
 
@@ -295,7 +418,11 @@ const renderUtilizationLocationRows = () => {
     return descending ? bValue - aValue : aValue - bValue;
   });
 
-  sortedRows.forEach((row) => {
+  const totalRows = sortedRows.length;
+  const visibleCount = ensureVisibleRowCount('locations', totalRows);
+  const rowsToRender = sortedRows.slice(0, visibleCount);
+
+  rowsToRender.forEach((row) => {
     const tr = document.createElement('tr');
 
     const hasLocationId =
@@ -331,6 +458,8 @@ const renderUtilizationLocationRows = () => {
 
     utilizationLocationsBody.appendChild(tr);
   });
+
+  updateUtilizationFooter('locations', totalRows, rowsToRender.length);
 };
 
 const renderUtilizationStationRows = () => {
@@ -341,15 +470,21 @@ const renderUtilizationStationRows = () => {
 
   if (utilizationStationRows === null) {
     renderTableMessage(utilizationStationsBody, 'Loading station utilization…');
+    clearUtilizationFooter('stations');
     return;
   }
 
   if (!Array.isArray(utilizationStationRows) || utilizationStationRows.length === 0) {
     renderTableMessage(utilizationStationsBody, 'Station utilization data unavailable.');
+    clearUtilizationFooter('stations');
     return;
   }
 
-  utilizationStationRows.forEach((row) => {
+  const totalRows = utilizationStationRows.length;
+  const visibleCount = ensureVisibleRowCount('stations', totalRows);
+  const rowsToRender = utilizationStationRows.slice(0, visibleCount);
+
+  rowsToRender.forEach((row) => {
     const tr = document.createElement('tr');
 
     const locationCell = document.createElement('td');
@@ -388,6 +523,8 @@ const renderUtilizationStationRows = () => {
 
     utilizationStationsBody.appendChild(tr);
   });
+
+  updateUtilizationFooter('stations', totalRows, rowsToRender.length);
 };
 
 const renderUtilizationPortRows = () => {
@@ -398,15 +535,21 @@ const renderUtilizationPortRows = () => {
 
   if (utilizationPortRows === null) {
     renderTableMessage(utilizationPortsBody, 'Loading port utilization…');
+    clearUtilizationFooter('ports');
     return;
   }
 
   if (!Array.isArray(utilizationPortRows) || utilizationPortRows.length === 0) {
     renderTableMessage(utilizationPortsBody, 'Port utilization data unavailable.');
+    clearUtilizationFooter('ports');
     return;
   }
 
-  utilizationPortRows.forEach((row) => {
+  const totalRows = utilizationPortRows.length;
+  const visibleCount = ensureVisibleRowCount('ports', totalRows);
+  const rowsToRender = utilizationPortRows.slice(0, visibleCount);
+
+  rowsToRender.forEach((row) => {
     const tr = document.createElement('tr');
 
     const locationCell = document.createElement('td');
@@ -450,44 +593,121 @@ const renderUtilizationPortRows = () => {
 
     utilizationPortsBody.appendChild(tr);
   });
+
+  updateUtilizationFooter('ports', totalRows, rowsToRender.length);
 };
 
-const refreshUtilizationTables = () => {
+function refreshUtilizationTables() {
   updateUtilizationSortIndicators();
   renderUtilizationLocationRows();
   renderUtilizationStationRows();
   renderUtilizationPortRows();
+}
+
+const handleUtilizationLoadMore = (view) => {
+  const state = getUtilizationViewState(view);
+  if (!state) {
+    return;
+  }
+  const totalRows = getUtilizationRowCount(view);
+  if (totalRows <= 0) {
+    state.visible = 0;
+    return;
+  }
+  const limit = Math.max(1, Number(state.limit) || UTILIZATION_DEFAULT_PAGE_SIZE);
+  const currentVisible =
+    Number.isFinite(state.visible) && state.visible > 0 ? state.visible : limit;
+  state.visible = Math.min(totalRows, currentVisible + limit);
+  refreshUtilizationTables();
 };
 
 const setUtilizationData = (locations, stations, ports) => {
   if (Array.isArray(locations)) {
     utilizationLocationRows = locations.slice();
     utilizationSortDescending = true;
+    resetUtilizationView('locations');
   } else if (locations === null) {
     utilizationLocationRows = null;
+    resetUtilizationView('locations');
   } else {
     utilizationLocationRows = [];
     utilizationSortDescending = true;
+    resetUtilizationView('locations');
   }
 
   if (Array.isArray(stations)) {
     utilizationStationRows = stations.slice();
+    resetUtilizationView('stations');
   } else if (stations === null) {
     utilizationStationRows = null;
+    resetUtilizationView('stations');
   } else {
     utilizationStationRows = [];
+    resetUtilizationView('stations');
   }
 
   if (Array.isArray(ports)) {
     utilizationPortRows = ports.slice();
+    resetUtilizationView('ports');
   } else if (ports === null) {
     utilizationPortRows = null;
+    resetUtilizationView('ports');
   } else {
     utilizationPortRows = [];
+    resetUtilizationView('ports');
   }
 
   refreshUtilizationTables();
 };
+
+document.querySelectorAll('[data-utilization-footer]').forEach((element) => {
+  const view = element?.dataset?.utilizationFooter;
+  if (!view || !UTILIZATION_VIEW_IDS.includes(view)) {
+    return;
+  }
+  utilizationFooterContainers.set(view, element);
+  element.hidden = true;
+  element.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-utilization-more]');
+    if (!button || !element.contains(button)) {
+      return;
+    }
+    const targetView = button.dataset.utilizationMore;
+    if (targetView === view) {
+      handleUtilizationLoadMore(view);
+    }
+  });
+});
+
+document.querySelectorAll('[data-utilization-limit]').forEach((element) => {
+  if (!(element instanceof HTMLSelectElement)) {
+    return;
+  }
+  const view = element.dataset.utilizationLimit;
+  if (!view || !UTILIZATION_VIEW_IDS.includes(view)) {
+    return;
+  }
+  const state = getUtilizationViewState(view);
+  const initial = parseUtilizationPageSize(element.value || state?.limit);
+  if (state) {
+    state.limit = initial;
+  }
+  element.value = String(initial);
+  utilizationLimitControls.set(view, element);
+  element.addEventListener('change', (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLSelectElement)) {
+      return;
+    }
+    const next = parseUtilizationPageSize(target.value);
+    const viewState = getUtilizationViewState(view);
+    if (viewState) {
+      viewState.limit = next;
+      resetUtilizationView(view);
+    }
+    refreshUtilizationTables();
+  });
+});
 
 const formatPeriodRange = (startIso, endIso, granularity) => {
   if (!startIso) {
