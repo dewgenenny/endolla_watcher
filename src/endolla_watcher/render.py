@@ -1,7 +1,9 @@
+from datetime import datetime
 from typing import List, Dict, Any
 from .rules import Rules
 import json
 import logging
+import textwrap
 
 logger = logging.getLogger(__name__)
 
@@ -110,37 +112,101 @@ CHARGER_TEMPLATE = """
 </html>
 """
 
+# Modern frontend stylesheet path
+STYLESHEET_PATH = "2025.css?v=20250101"
+
+
+def _render_site_header(active_page: str) -> str:
+    """Return the modern site header with the given page marked active."""
+
+    links = [
+        ("index.html", "Dashboard", "dashboard"),
+        ("locations.html", "Locations", "locations"),
+        ("problematic.html", "Problematic", "problematic"),
+        ("about.html", "About", "about"),
+    ]
+
+    link_markup: List[str] = []
+    for href, label, slug in links:
+        current_attr = " aria-current=\"page\"" if slug == active_page else ""
+        link_markup.append(
+            f'<a href="{href}" class="navbar__link"{current_attr}>{label}</a>'
+        )
+
+    links_html = "\n          ".join(link_markup)
+
+    return (
+        "<header class=\"site-header\">\n"
+        "  <div class=\"container\">\n"
+        "    <nav class=\"navbar u-glass\" aria-label=\"Primary\">\n"
+        "      <div class=\"navbar__brand\">\n"
+        "        <span class=\"navbar__title\">Endolla Watcher</span>\n"
+        "      </div>\n"
+        "      <div class=\"navbar__spacer\"></div>\n"
+        "      <div class=\"navbar__links\">\n"
+        f"        {links_html}\n"
+        "      </div>\n"
+        "    </nav>\n"
+        "  </div>\n"
+        "</header>"
+    )
+
+
 # Template for a separate page listing problematic chargers
 PROBLEMATIC_TEMPLATE = """
 <!DOCTYPE html>
-<html lang='en'>
+<html lang="en">
 <head>
-    <meta charset='UTF-8'>
-    <title>Problematic Chargers</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootswatch@5.3.2/dist/flatly/bootstrap.min.css" rel="stylesheet">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Problematic Chargers – Endolla Watcher</title>
+  <link rel="stylesheet" href="{stylesheet}">
 </head>
 <body>
-{navbar}
-<div class="container py-4">
-<h1 class="mb-4">Problematic Chargers</h1>
-<div class="table-responsive">
-<table class="table table-striped">
-    <thead class="table-dark">
-        <tr><th>Location</th><th>Station</th><th>Port</th><th>Status</th><th>Reason</th></tr>
-    </thead>
-    <tbody>
-        {rows}
-    </tbody>
-</table>
-</div>
-<p><a href="index.html">Back to index</a></p>
-<div class="text-muted small mt-4">
-    <p>Page last updated: {updated}</p>
-    <p>DB size: {db_size:.1f} MB</p>
-    <p>Processed in {elapsed:.2f} s</p>
-</div>
-</div>
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+{header}
+  <main class="page-main">
+    <div class="container">
+      <section class="section problematic-intro">
+        <h2>Chargers Requiring Attention</h2>
+        <p class="muted">Latest stations and ports flagged by the automated rules.</p>
+      </section>
+
+      <section class="section problematic" aria-live="polite">
+        <h2>Problematic Chargers</h2>
+        <p class="muted" id="problematic-count">{count_text}</p>
+        <div class="table-scroll">
+          <table aria-describedby="problematic-count">
+            <thead>
+              <tr>
+                <th scope="col">Location</th>
+                <th scope="col">Station</th>
+                <th scope="col">Port</th>
+                <th scope="col">Status</th>
+                <th scope="col">Reason</th>
+              </tr>
+            </thead>
+            <tbody>
+{rows}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="meta">
+          <span>Last updated {updated}</span>
+          <span>Database size {db_size:.1f} MB</span>
+          <span>Generated in {elapsed:.2f} s</span>
+        </div>
+      </section>
+    </div>
+  </main>
+  <footer class="site-footer">
+    <div class="container">
+      <small>&copy; {year} Endolla Watcher</small>
+    </div>
+  </footer>
 </body>
 </html>
 """
@@ -148,20 +214,41 @@ PROBLEMATIC_TEMPLATE = """
 # Template for the about page
 ABOUT_TEMPLATE = """
 <!DOCTYPE html>
-<html lang='en'>
+<html lang="en">
 <head>
-    <meta charset='UTF-8'>
-    <title>About - Endolla Watcher</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootswatch@5.3.2/dist/flatly/bootstrap.min.css" rel="stylesheet">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>About – Endolla Watcher</title>
+  <link rel="stylesheet" href="{stylesheet}">
 </head>
 <body>
-{navbar}
-<div class="container py-4">
-<h1>About Endolla Watcher</h1>
-<p>Endolla Watcher keeps an eye on Barcelona's public charging network. It highlights stations that appear inactive or unavailable so issues can be resolved quickly.</p>
-<p>This project is built and maintained by <strong>dewgenenny</strong>, an electric vehicle and data enthusiast eager to optimise infrastructure through better information.</p>
-</div>
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+{header}
+  <main class="page-main">
+    <div class="container">
+      <article class="content">
+        <h2>About</h2>
+        <p>
+          Endolla Watcher keeps an eye on Barcelona's public charging network. It highlights
+          stations that appear inactive or unavailable so issues can be resolved quickly.
+        </p>
+        <p>
+          The dashboard is powered by a small Python backend that continuously ingests the
+          Endolla open data feed and exposes a JSON API. This static site consumes that API
+          to render live statistics without the need for GitHub Pages.
+        </p>
+        <p>
+          Deployments are managed through Argo CD. The backend and frontend run as independent
+          workloads to make scaling and upgrades straightforward.
+        </p>
+      </article>
+    </div>
+  </main>
+  <footer class="site-footer">
+    <div class="container">
+      <small>&copy; {year} Endolla Watcher</small>
+    </div>
+  </footer>
 </body>
 </html>
 """
@@ -260,7 +347,11 @@ def render(
 
 def render_about() -> str:
     """Return the HTML for the about page."""
-    return ABOUT_TEMPLATE.format(navbar=NAVBAR)
+    return ABOUT_TEMPLATE.format(
+        header=_render_site_header("about"),
+        stylesheet=STYLESHEET_PATH,
+        year=datetime.now().year,
+    )
 
 
 def _render_problematic_rows(
@@ -299,12 +390,32 @@ def render_problematic(
 ) -> str:
     """Return the HTML page listing problematic chargers."""
     rows = _render_problematic_rows(problematic, locations)
+    if problematic:
+        count = len(problematic)
+        if count == 1:
+            count_text = "1 charger requires attention."
+        else:
+            count_text = f"{count} chargers require attention."
+        rows_html = textwrap.indent(rows, "            ")
+    else:
+        count_text = "No chargers currently require attention."
+        rows_html = (
+            "            <tr>"
+            "<td colspan=\"5\" class=\"muted\">No chargers are currently flagged.</td>"
+            "</tr>"
+        )
+    updated_text = updated or "N/A"
+    db_size_value = db_size if db_size is not None else 0.0
+    elapsed_value = elapsed if elapsed is not None else 0.0
     html = PROBLEMATIC_TEMPLATE.format(
-        navbar=NAVBAR,
-        rows=rows,
-        updated=updated or "N/A",
-        db_size=(db_size if db_size is not None else 0.0),
-        elapsed=(elapsed if elapsed is not None else 0.0),
+        header=_render_site_header("problematic"),
+        stylesheet=STYLESHEET_PATH,
+        rows=rows_html,
+        count_text=count_text,
+        updated=updated_text,
+        db_size=db_size_value,
+        elapsed=elapsed_value,
+        year=datetime.now().year,
     )
     logger.debug("Generated problematic page with %d rows", len(problematic))
     return html
