@@ -42,6 +42,15 @@ const locationDayChartStatus = document.getElementById('location-usage-day-statu
 const locationWeekChartStatus = document.getElementById('location-usage-week-status');
 const highChargingListEl = document.getElementById('high-charging-list');
 const highChargingNoteEl = document.getElementById('high-charging-note');
+const heatmapMapContainer = document.getElementById('utilization-heatmap');
+const heatmapStatusEl = document.getElementById('heatmap-status');
+const heatmapMetricSelect = document.getElementById('heatmap-metric');
+const heatmapLegendMinEl = document.getElementById('heatmap-legend-min');
+const heatmapLegendMaxEl = document.getElementById('heatmap-legend-max');
+const heatmapDescriptionEl = document.getElementById('heatmap-description');
+const heatmapNoteEl = document.getElementById('heatmap-note');
+const heatmapListContainer = document.getElementById('heatmap-location-list');
+const heatmapUpdatedEl = document.getElementById('heatmap-updated');
 
 let chargesChart;
 let dashboardController;
@@ -59,10 +68,29 @@ let locationMapResizeObserver;
 let locationMapResizeTimer;
 let locationMapResizeTimerType;
 let locationMapResizeRepeatCount = 0;
+let heatmapMap;
+let heatmapLayer;
+let heatmapMarkerLayer;
+let heatmapDataRows = null;
+let heatmapCoordinateLookup = null;
+let heatmapMetricKey = 'occupation_utilization_pct';
+let heatmapResizeObserver;
+let heatmapResizeHandle;
 
 const UTILIZATION_VIEW_IDS = ['locations', 'stations', 'ports'];
 const UTILIZATION_PAGE_SIZES = [10, 25, 100];
 const UTILIZATION_DEFAULT_PAGE_SIZE = UTILIZATION_PAGE_SIZES[0];
+const HEATMAP_METRICS = {
+  occupation_utilization_pct: {
+    label: 'Occupied time',
+    description: 'Share of monitored time that ports at each location were occupied.',
+  },
+  active_charging_utilization_pct: {
+    label: 'Active charging',
+    description: 'Share of monitored time spent actively charging vehicles.',
+  },
+};
+const HEATMAP_DEFAULT_METRIC = 'occupation_utilization_pct';
 
 const utilizationViewState = new Map();
 const utilizationLimitControls = new Map();
@@ -668,6 +696,385 @@ const setUtilizationData = (locations, stations, ports) => {
   refreshUtilizationTables();
 };
 
+const resolveHeatmapMetric = (metric) => {
+  if (metric && Object.prototype.hasOwnProperty.call(HEATMAP_METRICS, metric)) {
+    return metric;
+  }
+  return HEATMAP_DEFAULT_METRIC;
+};
+
+const setHeatmapStatus = (message) => {
+  if (!heatmapStatusEl) {
+    return;
+  }
+  if (message) {
+    heatmapStatusEl.textContent = message;
+    heatmapStatusEl.hidden = false;
+  } else {
+    heatmapStatusEl.hidden = true;
+  }
+};
+
+const setHeatmapListPlaceholder = (message, summary = '') => {
+  if (!heatmapListContainer) {
+    return;
+  }
+  heatmapListContainer.innerHTML = '';
+  if (message) {
+    const note = document.createElement('p');
+    note.className = 'muted';
+    note.textContent = message;
+    heatmapListContainer.appendChild(note);
+  }
+  if (heatmapUpdatedEl) {
+    heatmapUpdatedEl.textContent = summary;
+  }
+};
+
+const updateHeatmapDescription = () => {
+  if (!heatmapDescriptionEl) {
+    return;
+  }
+  const definition = HEATMAP_METRICS[resolveHeatmapMetric(heatmapMetricKey)];
+  const description = definition?.description ?? '';
+  heatmapDescriptionEl.textContent = description;
+  heatmapDescriptionEl.hidden = !description;
+};
+
+const ensureHeatmapMap = () => {
+  if (!heatmapMapContainer) {
+    return null;
+  }
+  if (heatmapMap) {
+    return heatmapMap;
+  }
+  if (!window.L) {
+    setHeatmapStatus('Map library failed to load.');
+    if (heatmapNoteEl) {
+      heatmapNoteEl.textContent = 'Map unavailable because Leaflet failed to load.';
+    }
+    return null;
+  }
+  if (typeof window.L.heatLayer !== 'function') {
+    setHeatmapStatus('Heatmap layer failed to load.');
+    if (heatmapNoteEl) {
+      heatmapNoteEl.textContent = 'Heatmap overlay unavailable.';
+    }
+    return null;
+  }
+
+  heatmapMap = window.L.map(heatmapMapContainer, { attributionControl: false });
+  window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+  }).addTo(heatmapMap);
+  heatmapLayer = window.L.heatLayer([], {
+    radius: 28,
+    blur: 18,
+    maxZoom: 15,
+    minOpacity: 0.25,
+  }).addTo(heatmapMap);
+  heatmapMarkerLayer = window.L.layerGroup().addTo(heatmapMap);
+
+  if (heatmapNoteEl) {
+    heatmapNoteEl.textContent = 'Map data © OpenStreetMap contributors.';
+  }
+
+  const invalidate = () => {
+    if (heatmapMap) {
+      heatmapMap.invalidateSize();
+    }
+  };
+  heatmapMap.whenReady(invalidate);
+
+  if (typeof window.addEventListener === 'function') {
+    heatmapResizeHandle = () => {
+      if (typeof requestAnimationFrame === 'function') {
+        requestAnimationFrame(invalidate);
+      } else {
+        setTimeout(invalidate, 30);
+      }
+    };
+    window.addEventListener('resize', heatmapResizeHandle);
+  }
+
+  if (typeof ResizeObserver === 'function') {
+    heatmapResizeObserver = new ResizeObserver(() => invalidate());
+    heatmapResizeObserver.observe(heatmapMapContainer);
+  }
+
+  return heatmapMap;
+};
+
+const clearHeatmapLayers = () => {
+  if (heatmapLayer) {
+    heatmapLayer.setLatLngs([]);
+  }
+  if (heatmapMarkerLayer) {
+    heatmapMarkerLayer.clearLayers();
+  }
+};
+
+const getHeatmapColor = (value) => {
+  const numeric = Number.isFinite(value) ? value : Number(value);
+  const clamped = Number.isFinite(numeric)
+    ? Math.min(Math.max(numeric, 0), 1)
+    : 0;
+  const hue = 210 - clamped * 210;
+  const lightness = 55 - clamped * 15;
+  return `hsl(${Math.round(hue)}, 85%, ${Math.round(lightness)}%)`;
+};
+
+const renderHeatmapList = (entries, metricKey) => {
+  if (!heatmapListContainer) {
+    return;
+  }
+  heatmapListContainer.innerHTML = '';
+  const definition = HEATMAP_METRICS[resolveHeatmapMetric(metricKey)];
+  const label = definition?.label ?? 'Utilization';
+  const sorted = entries.slice().sort((a, b) => b.value - a.value);
+  const limit = Math.min(sorted.length, 15);
+
+  const wrapper = document.createElement('div');
+  wrapper.className = 'table-scroll';
+  const table = document.createElement('table');
+  table.className = 'heatmap-table';
+
+  const thead = document.createElement('thead');
+  const headerRow = document.createElement('tr');
+  ['Location', 'Stations', 'Ports', label].forEach((heading) => {
+    const th = document.createElement('th');
+    th.scope = 'col';
+    th.textContent = heading;
+    headerRow.appendChild(th);
+  });
+  thead.appendChild(headerRow);
+  table.appendChild(thead);
+
+  const tbody = document.createElement('tbody');
+  sorted.slice(0, limit).forEach((entry) => {
+    const tr = document.createElement('tr');
+
+    const locationCell = document.createElement('td');
+    locationCell.className = 'heatmap-location-cell';
+    const link = document.createElement('a');
+    link.href = `location.html?id=${encodeURIComponent(entry.id)}`;
+    link.textContent = entry.id;
+    link.setAttribute('aria-label', `View utilization details for location ${entry.id}`);
+    locationCell.appendChild(link);
+    if (entry.address) {
+      const address = document.createElement('span');
+      address.className = 'heatmap-address';
+      address.textContent = entry.address;
+      locationCell.appendChild(address);
+    }
+    tr.appendChild(locationCell);
+
+    const stationCell = document.createElement('td');
+    stationCell.textContent = Number.isFinite(entry.stationCount)
+      ? formatNumber(entry.stationCount)
+      : '–';
+    tr.appendChild(stationCell);
+
+    const portCell = document.createElement('td');
+    portCell.textContent = Number.isFinite(entry.portCount)
+      ? formatNumber(entry.portCount)
+      : '–';
+    tr.appendChild(portCell);
+
+    const metricCell = document.createElement('td');
+    metricCell.textContent = formatPercent(entry.value, 1);
+    tr.appendChild(metricCell);
+
+    tbody.appendChild(tr);
+  });
+
+  table.appendChild(tbody);
+  wrapper.appendChild(table);
+  heatmapListContainer.appendChild(wrapper);
+
+  if (heatmapUpdatedEl) {
+    const summaryLabel = label.toLowerCase();
+    heatmapUpdatedEl.textContent = `Top ${limit} of ${entries.length} mapped locations ranked by ${summaryLabel}.`;
+  }
+};
+
+const updateHeatmapLegend = (minValue, maxValue) => {
+  if (heatmapLegendMinEl) {
+    heatmapLegendMinEl.textContent = Number.isFinite(minValue)
+      ? formatPercent(minValue, 0)
+      : '0%';
+  }
+  if (heatmapLegendMaxEl) {
+    heatmapLegendMaxEl.textContent = Number.isFinite(maxValue)
+      ? formatPercent(maxValue, 0)
+      : '100%';
+  }
+};
+
+const setHeatmapMetric = (metric) => {
+  const resolved = resolveHeatmapMetric(metric);
+  heatmapMetricKey = resolved;
+  if (heatmapMetricSelect && heatmapMetricSelect.value !== resolved) {
+    heatmapMetricSelect.value = resolved;
+  }
+  updateHeatmapDescription();
+  renderHeatmap();
+};
+
+const renderHeatmap = () => {
+  if (!heatmapMapContainer && !heatmapListContainer) {
+    return;
+  }
+
+  if (heatmapDataRows === null) {
+    setHeatmapStatus('Loading utilization heatmap…');
+    setHeatmapListPlaceholder('Loading utilization hotspots…', 'Loading utilization hotspots…');
+    clearHeatmapLayers();
+    return;
+  }
+
+  if (!Array.isArray(heatmapDataRows) || heatmapDataRows.length === 0) {
+    setHeatmapStatus('Utilization data unavailable.');
+    setHeatmapListPlaceholder('Utilization data unavailable.', '');
+    clearHeatmapLayers();
+    return;
+  }
+
+  if (!heatmapCoordinateLookup || Object.keys(heatmapCoordinateLookup).length === 0) {
+    setHeatmapStatus('Location coordinates unavailable.');
+    setHeatmapListPlaceholder('Location coordinates unavailable.', '');
+    clearHeatmapLayers();
+    return;
+  }
+
+  const mapInstance = ensureHeatmapMap();
+  if (!mapInstance) {
+    setHeatmapListPlaceholder('Map unavailable.', '');
+    return;
+  }
+
+  const metricKey = resolveHeatmapMetric(heatmapMetricKey);
+  const definition = HEATMAP_METRICS[metricKey];
+  updateHeatmapDescription();
+
+  const entries = heatmapDataRows
+    .map((row) => {
+      const id = row?.location_id || row?.locationId || row?.id;
+      if (!id) {
+        return null;
+      }
+      const coords = heatmapCoordinateLookup?.[id];
+      if (!coords) {
+        return null;
+      }
+      const lat = Number(coords.lat);
+      const lon = Number(coords.lon);
+      if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+        return null;
+      }
+      const metricValueRaw = row?.[metricKey];
+      const metricValue = Number(
+        typeof metricValueRaw === 'number' ? metricValueRaw : Number(metricValueRaw)
+      );
+      if (!Number.isFinite(metricValue)) {
+        return null;
+      }
+      const stationCountRaw = row?.station_count ?? row?.stationCount;
+      const portCountRaw = row?.port_count ?? row?.portCount;
+      const stationCount = Number(stationCountRaw);
+      const portCount = Number(portCountRaw);
+      const addressValue = coords?.address;
+      const address = typeof addressValue === 'string' && addressValue.trim()
+        ? addressValue.trim()
+        : null;
+      return {
+        id,
+        lat,
+        lon,
+        value: metricValue,
+        intensity: Math.min(Math.max(metricValue / 100, 0), 1),
+        stationCount: Number.isFinite(stationCount) ? stationCount : null,
+        portCount: Number.isFinite(portCount) ? portCount : null,
+        address,
+      };
+    })
+    .filter(Boolean);
+
+  if (entries.length === 0) {
+    setHeatmapStatus('No locations have utilization data with coordinates.');
+    setHeatmapListPlaceholder('No mappable locations available.', '');
+    clearHeatmapLayers();
+    return;
+  }
+
+  heatmapLayer.setLatLngs(entries.map((entry) => [entry.lat, entry.lon, entry.intensity]));
+  heatmapMarkerLayer.clearLayers();
+
+  entries.forEach((entry) => {
+    const marker = window.L.circleMarker([entry.lat, entry.lon], {
+      radius: 6 + entry.intensity * 8,
+      color: 'rgba(15, 23, 42, 0.55)',
+      weight: 1,
+      fillColor: getHeatmapColor(entry.intensity),
+      fillOpacity: 0.85,
+    });
+    const tooltip = document.createElement('div');
+    const title = document.createElement('strong');
+    title.textContent = entry.address || `Location ${entry.id}`;
+    tooltip.appendChild(title);
+    const metricLine = document.createElement('div');
+    metricLine.textContent = `${formatPercent(entry.value, 1)} ${definition?.label?.toLowerCase() || 'utilization'}`;
+    tooltip.appendChild(metricLine);
+    const metaParts = [];
+    if (Number.isFinite(entry.stationCount) && entry.stationCount > 0) {
+      metaParts.push(`${formatNumber(entry.stationCount)} stations`);
+    }
+    if (Number.isFinite(entry.portCount) && entry.portCount > 0) {
+      metaParts.push(`${formatNumber(entry.portCount)} ports`);
+    }
+    if (metaParts.length > 0) {
+      const meta = document.createElement('div');
+      meta.className = 'muted';
+      meta.textContent = metaParts.join(' · ');
+      tooltip.appendChild(meta);
+    }
+    marker.bindTooltip(tooltip, { direction: 'top', sticky: true });
+    marker.addTo(heatmapMarkerLayer);
+  });
+
+  const bounds = window.L.latLngBounds(entries.map((entry) => [entry.lat, entry.lon]));
+  if (entries.length === 1) {
+    mapInstance.setView([entries[0].lat, entries[0].lon], 15);
+  } else if (bounds.isValid()) {
+    mapInstance.fitBounds(bounds.pad(0.1));
+  }
+
+  setHeatmapStatus(null);
+
+  const values = entries.map((entry) => entry.value);
+  const minValue = Math.min(...values);
+  const maxValue = Math.max(...values);
+  updateHeatmapLegend(minValue, maxValue);
+
+  renderHeatmapList(entries, metricKey);
+};
+
+const setHeatmapData = (locations, coordinates) => {
+  if (!heatmapMapContainer && !heatmapListContainer) {
+    return;
+  }
+  heatmapCoordinateLookup =
+    coordinates && typeof coordinates === 'object' ? coordinates : null;
+  if (locations === null) {
+    heatmapDataRows = null;
+  } else if (Array.isArray(locations)) {
+    heatmapDataRows = locations.slice();
+  } else {
+    heatmapDataRows = [];
+  }
+  renderHeatmap();
+};
+
 document.querySelectorAll('[data-utilization-footer]').forEach((element) => {
   const view = element?.dataset?.utilizationFooter;
   if (!view || !UTILIZATION_VIEW_IDS.includes(view)) {
@@ -716,6 +1123,20 @@ document.querySelectorAll('[data-utilization-limit]').forEach((element) => {
     refreshUtilizationTables();
   });
 });
+
+if (heatmapMetricSelect) {
+  const initialMetric = resolveHeatmapMetric(heatmapMetricSelect.value || heatmapMetricKey);
+  heatmapMetricKey = initialMetric;
+  heatmapMetricSelect.value = initialMetric;
+  heatmapMetricSelect.addEventListener('change', (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLSelectElement)) {
+      return;
+    }
+    setHeatmapMetric(target.value);
+  });
+  updateHeatmapDescription();
+}
 
 const formatPeriodRange = (startIso, endIso, granularity) => {
   if (!startIso) {
@@ -1283,6 +1704,7 @@ const showError = (error) => {
   }
   setUtilizationData([], [], []);
   updateHighChargingLocations(null);
+  setHeatmapData([], null);
 };
 
 const setLocationLoading = (message) => {
@@ -1771,6 +2193,7 @@ const loadDashboard = async (days = DEFAULT_DAYS) => {
   const controller = new AbortController();
   dashboardController = controller;
   setUtilizationData(null, null, null);
+  setHeatmapData(null, null);
   try {
     setChartStatus('Loading charging trend…');
     const params = new URLSearchParams({
@@ -1790,6 +2213,7 @@ const loadDashboard = async (days = DEFAULT_DAYS) => {
     updateSummary(data.stats, data);
     updateUtilization(data.stats?.utilization);
     updateHighChargingLocations(data.stats?.utilization?.locations);
+    setHeatmapData(data.stats?.utilization?.locations || [], data.locations);
     updateRules(data.rules, data.rule_counts);
     updateDaily(data.daily);
     const hasSeries = Array.isArray(data.series);
