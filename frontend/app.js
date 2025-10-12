@@ -2198,12 +2198,16 @@ const applyPendingLocationMarker = () => {
     locationMapMarker.remove();
   }
   if (!locationMapMarkerElement) {
-    const markerElement = document.createElement('span');
-    markerElement.className = 'location-map-marker';
+    const markerElement = document.createElement('div');
+    markerElement.classList.add('location-map-marker');
     markerElement.setAttribute('aria-hidden', 'true');
+    markerElement.style.width = '18px';
+    markerElement.style.height = '18px';
+    markerElement.style.borderRadius = '999px';
+    markerElement.style.pointerEvents = 'none';
     locationMapMarkerElement = markerElement;
   }
-  locationMapMarker = new maplibregl.Marker({ element: locationMapMarkerElement, anchor: 'center' })
+  locationMapMarker = new maplibregl.Marker(locationMapMarkerElement, { anchor: 'center' })
     .setLngLat([lon, lat])
     .addTo(locationMap);
   locationMap.jumpTo({ center: [lon, lat], zoom: 16 });
