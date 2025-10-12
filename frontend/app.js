@@ -56,6 +56,45 @@ const formatNumber = (value) => {
   return new Intl.NumberFormat().format(value);
 };
 
+const formatDecimal = (value, { minimumFractionDigits = 1, maximumFractionDigits = 1 } = {}) => {
+  if (value === null || value === undefined) {
+    return '–';
+  }
+  const numeric = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(numeric)) {
+    return '–';
+  }
+  return new Intl.NumberFormat(undefined, {
+    minimumFractionDigits,
+    maximumFractionDigits,
+  }).format(numeric);
+};
+
+const formatPercent = (value, fractionDigits = 1) => {
+  if (value === null || value === undefined) {
+    return '–';
+  }
+  const numeric = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(numeric)) {
+    return '–';
+  }
+  return `${formatDecimal(numeric, {
+    minimumFractionDigits: fractionDigits,
+    maximumFractionDigits: fractionDigits,
+  })}%`;
+};
+
+const formatRatioPercent = (value, fractionDigits = 1) => {
+  if (value === null || value === undefined) {
+    return '–';
+  }
+  const numeric = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(numeric)) {
+    return '–';
+  }
+  return formatPercent(numeric * 100, fractionDigits);
+};
+
 const formatMinutes = (value) => {
   if (!value && value !== 0) {
     return '–';
@@ -243,6 +282,57 @@ const updateSummary = (stats, info) => {
   if (updatedFooter && info?.last_fetch) {
     const fetchTime = new Date(info.last_fetch).toLocaleString();
     updatedFooter.textContent = `Last fetch ${fetchTime}`;
+  }
+};
+
+const updateUtilization = (utilization) => {
+  const noteEl = document.getElementById('utilization-note');
+  const metrics = utilization?.network;
+  if (!metrics) {
+    if (noteEl) {
+      noteEl.textContent = 'Utilization data unavailable.';
+    }
+    return;
+  }
+
+  const mapping = [
+    ['utilization-ports', metrics.port_count, formatNumber],
+    ['utilization-stations', metrics.station_count, formatNumber],
+    ['utilization-locations', metrics.location_count, formatNumber],
+    [
+      'utilization-session-day',
+      metrics.session_count_per_day,
+      (value) => formatDecimal(value, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+    ],
+    [
+      'utilization-session-hour',
+      metrics.session_count_per_hour,
+      (value) => formatDecimal(value, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+    ],
+    ['utilization-occupied', metrics.occupation_utilization_pct, (value) => formatPercent(value, 1)],
+    ['utilization-active', metrics.active_charging_utilization_pct, (value) => formatPercent(value, 1)],
+    ['utilization-availability', metrics.availability_ratio, (value) => formatRatioPercent(value, 1)],
+  ];
+
+  mapping.forEach(([id, value, formatter]) => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.textContent = formatter(value);
+    }
+  });
+
+  if (noteEl) {
+    const monitoredDays = Number(metrics.monitored_days);
+    const ports = Number(metrics.port_count);
+    if (Number.isFinite(monitoredDays) && Number.isFinite(ports) && ports > 0) {
+      const averageDays = monitoredDays / ports;
+      noteEl.textContent = `Averages based on the last ${formatDecimal(averageDays, {
+        minimumFractionDigits: 1,
+        maximumFractionDigits: 1,
+      })} days of telemetry per port across ${formatNumber(ports)} ports.`;
+    } else {
+      noteEl.textContent = 'Utilization derived from the latest telemetry window.';
+    }
   }
 };
 
@@ -544,6 +634,10 @@ const showError = (error) => {
     countEl.textContent = 'Unable to load data from the backend.';
     countEl.classList.add('muted');
   }
+  const utilNote = document.getElementById('utilization-note');
+  if (utilNote) {
+    utilNote.textContent = 'Unable to load utilization metrics.';
+  }
   const meta = document.getElementById('summary-meta');
   if (meta) {
     meta.textContent = 'Backend unavailable';
@@ -578,6 +672,7 @@ const loadDashboard = async (days = DEFAULT_DAYS) => {
       return;
     }
     updateSummary(data.stats, data);
+    updateUtilization(data.stats?.utilization);
     updateRules(data.rules, data.rule_counts);
     updateDaily(data.daily);
     const hasSeries = Array.isArray(data.series);
