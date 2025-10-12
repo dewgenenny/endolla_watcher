@@ -61,39 +61,90 @@
           <p class="muted" id="utilization-note">Loading utilization metrics…</p>
         </div>
       </div>
-      <div class="grid utilization-grid">
-        <article class="card">
-          <h3>Ports tracked</h3>
-          <p id="utilization-ports">–</p>
-        </article>
-        <article class="card">
-          <h3>Stations tracked</h3>
-          <p id="utilization-stations">–</p>
-        </article>
-        <article class="card">
-          <h3>Locations covered</h3>
-          <p id="utilization-locations">–</p>
-        </article>
-        <article class="card">
-          <h3>Sessions / port (day)</h3>
-          <p id="utilization-session-day">–</p>
-        </article>
-        <article class="card">
-          <h3>Sessions / port (hour)</h3>
-          <p id="utilization-session-hour">–</p>
-        </article>
-        <article class="card">
-          <h3>Occupied time</h3>
-          <p id="utilization-occupied">–</p>
-        </article>
-        <article class="card">
-          <h3>Active charging</h3>
-          <p id="utilization-active">–</p>
-        </article>
-        <article class="card">
-          <h3>Availability</h3>
-          <p id="utilization-availability">–</p>
-        </article>
+      <div
+        class="utilization-tabs"
+        id="utilization-tabs"
+        role="tablist"
+        aria-label="Utilization views"
+      >
+        <button
+          type="button"
+          class="utilization-tab is-active"
+          role="tab"
+          aria-selected="true"
+          data-tab="snapshot"
+        >
+          Snapshot
+        </button>
+        <button
+          type="button"
+          class="utilization-tab"
+          role="tab"
+          aria-selected="false"
+          data-tab="locations"
+          tabindex="-1"
+        >
+          Locations
+        </button>
+      </div>
+      <div class="utilization-panel is-active" data-utilization-panel="snapshot">
+        <div class="grid utilization-grid">
+          <article class="card">
+            <h3>Ports tracked</h3>
+            <p id="utilization-ports">–</p>
+          </article>
+          <article class="card">
+            <h3>Stations tracked</h3>
+            <p id="utilization-stations">–</p>
+          </article>
+          <article class="card">
+            <h3>Locations covered</h3>
+            <p id="utilization-locations">–</p>
+          </article>
+          <article class="card">
+            <h3>Sessions / port (day)</h3>
+            <p id="utilization-session-day">–</p>
+          </article>
+          <article class="card">
+            <h3>Sessions / port (hour)</h3>
+            <p id="utilization-session-hour">–</p>
+          </article>
+          <article class="card">
+            <h3>Occupied time</h3>
+            <p id="utilization-occupied">–</p>
+          </article>
+          <article class="card">
+            <h3>Active charging</h3>
+            <p id="utilization-active">–</p>
+          </article>
+          <article class="card">
+            <h3>Availability</h3>
+            <p id="utilization-availability">–</p>
+          </article>
+        </div>
+      </div>
+      <div class="utilization-panel" data-utilization-panel="locations" hidden>
+        <p class="muted utilization-panel-note">
+          Locations ordered by occupied time during the telemetry window.
+        </p>
+        <div class="table-scroll">
+          <table aria-describedby="utilization-note">
+            <thead>
+              <tr>
+                <th scope="col">Location</th>
+                <th scope="col">Stations</th>
+                <th scope="col">Ports</th>
+                <th scope="col" id="utilization-rate-header" aria-sort="descending">
+                  <button type="button" id="utilization-sort" class="sort-button">
+                    <span class="sort-button-label">Utilization rate</span>
+                    <span class="sort-indicator" aria-hidden="true">High → Low</span>
+                  </button>
+                </th>
+              </tr>
+            </thead>
+            <tbody id="utilization-locations-body"></tbody>
+          </table>
+        </div>
       </div>
     </section>
 

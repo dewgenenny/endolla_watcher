@@ -12,9 +12,20 @@ const chargesStatus = document.getElementById('charges-chart-status');
 const chargesTotalEl = document.getElementById('charges-total');
 const chargesRangeWindow = document.getElementById('charges-range-window');
 const chargesRangeControl = document.getElementById('charges-range');
+const utilizationTabsRoot = document.getElementById('utilization-tabs');
+const utilizationTabButtons = utilizationTabsRoot
+  ? Array.from(utilizationTabsRoot.querySelectorAll('[data-tab]'))
+  : [];
+const utilizationPanels = document.querySelectorAll('[data-utilization-panel]');
+const utilizationLocationsBody = document.getElementById('utilization-locations-body');
+const utilizationSortButton = document.getElementById('utilization-sort');
+const utilizationRateHeader = document.getElementById('utilization-rate-header');
 
 let chargesChart;
 let dashboardController;
+let activeUtilizationTabId = null;
+let utilizationLocationRows = null;
+let utilizationSortDescending = true;
 
 const chargesGlowPlugin = {
   id: 'chargesGlow',
@@ -170,6 +181,140 @@ const formatRange = (startIso, endIso) => {
   return `${start.toLocaleDateString(undefined, startOptions)} – ${end.toLocaleDateString(undefined, endOptions)}`;
 };
 
+const setActiveUtilizationTab = (targetId) => {
+  if (!utilizationTabsRoot || utilizationTabButtons.length === 0) {
+    return;
+  }
+  const targetButton = utilizationTabButtons.find((button) => button.dataset.tab === targetId);
+  if (!targetButton) {
+    return;
+  }
+  activeUtilizationTabId = targetId;
+  utilizationTabButtons.forEach((button) => {
+    const isActive = button === targetButton;
+    button.classList.toggle('is-active', isActive);
+    button.setAttribute('aria-selected', isActive ? 'true' : 'false');
+    button.tabIndex = isActive ? 0 : -1;
+  });
+  utilizationPanels.forEach((panel) => {
+    const isActive = panel.dataset.utilizationPanel === targetId;
+    panel.hidden = !isActive;
+    panel.classList.toggle('is-active', isActive);
+  });
+};
+
+const updateUtilizationSortIndicators = () => {
+  if (utilizationRateHeader) {
+    utilizationRateHeader.setAttribute('aria-sort', utilizationSortDescending ? 'descending' : 'ascending');
+  }
+  if (utilizationSortButton) {
+    const indicator = utilizationSortButton.querySelector('.sort-indicator');
+    if (indicator) {
+      indicator.textContent = utilizationSortDescending ? 'High → Low' : 'Low → High';
+    }
+    const nextOrder = utilizationSortDescending ? 'low to high' : 'high to low';
+    utilizationSortButton.setAttribute('aria-label', `Sort utilization rate ${nextOrder}`);
+    utilizationSortButton.setAttribute('title', `Sort utilization rate ${nextOrder}`);
+  }
+};
+
+const getLocationUtilizationValue = (row) => {
+  if (!row) {
+    return Number.NaN;
+  }
+  const value = Number(row.occupation_utilization_pct);
+  return Number.isFinite(value) ? value : Number.NaN;
+};
+
+const renderUtilizationLocationRows = () => {
+  if (!utilizationLocationsBody) {
+    return;
+  }
+  utilizationLocationsBody.innerHTML = '';
+
+  const appendMessage = (message) => {
+    const tr = document.createElement('tr');
+    const td = document.createElement('td');
+    td.colSpan = 4;
+    td.textContent = message;
+    td.classList.add('muted');
+    tr.appendChild(td);
+    utilizationLocationsBody.appendChild(tr);
+  };
+
+  if (utilizationLocationRows === null) {
+    appendMessage('Loading location utilization…');
+    return;
+  }
+
+  if (!Array.isArray(utilizationLocationRows) || utilizationLocationRows.length === 0) {
+    appendMessage('Location utilization data unavailable.');
+    return;
+  }
+
+  const sortedRows = [...utilizationLocationRows];
+  const descending = utilizationSortDescending;
+  const normalize = (value) => {
+    if (Number.isFinite(value)) {
+      return value;
+    }
+    return descending ? -Infinity : Infinity;
+  };
+  sortedRows.sort((a, b) => {
+    const aValue = normalize(getLocationUtilizationValue(a));
+    const bValue = normalize(getLocationUtilizationValue(b));
+    return descending ? bValue - aValue : aValue - bValue;
+  });
+
+  sortedRows.forEach((row) => {
+    const tr = document.createElement('tr');
+
+    const hasLocationId =
+      row && row.location_id !== null && row.location_id !== undefined && row.location_id !== '';
+    const locationCell = document.createElement('td');
+    locationCell.textContent = hasLocationId ? String(row.location_id) : 'Unknown';
+    if (!hasLocationId) {
+      locationCell.classList.add('muted');
+    }
+    tr.appendChild(locationCell);
+
+    const stationCell = document.createElement('td');
+    stationCell.textContent = formatNumber(row?.station_count);
+    tr.appendChild(stationCell);
+
+    const portCell = document.createElement('td');
+    portCell.textContent = formatNumber(row?.port_count);
+    tr.appendChild(portCell);
+
+    const utilizationCell = document.createElement('td');
+    const utilizationValue = getLocationUtilizationValue(row);
+    utilizationCell.textContent = Number.isFinite(utilizationValue)
+      ? formatPercent(utilizationValue, 1)
+      : '–';
+    tr.appendChild(utilizationCell);
+
+    utilizationLocationsBody.appendChild(tr);
+  });
+};
+
+const refreshUtilizationLocationTable = () => {
+  updateUtilizationSortIndicators();
+  renderUtilizationLocationRows();
+};
+
+const setUtilizationLocationRows = (rows) => {
+  if (Array.isArray(rows)) {
+    utilizationLocationRows = rows.slice();
+    utilizationSortDescending = true;
+  } else if (rows === null) {
+    utilizationLocationRows = null;
+  } else {
+    utilizationLocationRows = [];
+    utilizationSortDescending = true;
+  }
+  refreshUtilizationLocationTable();
+};
+
 const formatPeriodRange = (startIso, endIso, granularity) => {
   if (!startIso) {
     return null;
@@ -292,6 +437,7 @@ const updateUtilization = (utilization) => {
     if (noteEl) {
       noteEl.textContent = 'Utilization data unavailable.';
     }
+    setUtilizationLocationRows([]);
     return;
   }
 
@@ -320,6 +466,8 @@ const updateUtilization = (utilization) => {
       el.textContent = formatter(value);
     }
   });
+
+  setUtilizationLocationRows(Array.isArray(utilization?.locations) ? utilization.locations : []);
 
   if (noteEl) {
     const monitoredDays = Number(metrics.monitored_days);
@@ -642,6 +790,7 @@ const showError = (error) => {
   if (meta) {
     meta.textContent = 'Backend unavailable';
   }
+  setUtilizationLocationRows([]);
 };
 
 const loadDashboard = async (days = DEFAULT_DAYS) => {
@@ -655,6 +804,7 @@ const loadDashboard = async (days = DEFAULT_DAYS) => {
   }
   const controller = new AbortController();
   dashboardController = controller;
+  setUtilizationLocationRows(null);
   try {
     setChartStatus('Loading charging trend…');
     const params = new URLSearchParams({
@@ -698,6 +848,65 @@ const loadDashboard = async (days = DEFAULT_DAYS) => {
     }
   }
 };
+
+refreshUtilizationLocationTable();
+
+if (utilizationTabsRoot && utilizationTabButtons.length > 0) {
+  const initialTabButton =
+    utilizationTabButtons.find((button) => button.classList.contains('is-active')) ?? utilizationTabButtons[0];
+  if (initialTabButton && initialTabButton.dataset.tab) {
+    setActiveUtilizationTab(initialTabButton.dataset.tab);
+  }
+
+  utilizationTabsRoot.addEventListener('click', (event) => {
+    const tabButton = event.target.closest('[data-tab]');
+    if (!tabButton || !utilizationTabsRoot.contains(tabButton)) {
+      return;
+    }
+    const { tab } = tabButton.dataset;
+    if (!tab) {
+      return;
+    }
+    setActiveUtilizationTab(tab);
+  });
+
+  utilizationTabsRoot.addEventListener('keydown', (event) => {
+    const navigationKeys = ['ArrowLeft', 'ArrowRight', 'Home', 'End'];
+    if (!navigationKeys.includes(event.key) || utilizationTabButtons.length === 0) {
+      return;
+    }
+    event.preventDefault();
+    let currentIndex = utilizationTabButtons.indexOf(document.activeElement);
+    if (currentIndex === -1) {
+      currentIndex = utilizationTabButtons.findIndex((button) => button.dataset.tab === activeUtilizationTabId);
+      if (currentIndex === -1) {
+        currentIndex = 0;
+      }
+    }
+    let nextIndex = currentIndex;
+    if (event.key === 'ArrowRight') {
+      nextIndex = (currentIndex + 1) % utilizationTabButtons.length;
+    } else if (event.key === 'ArrowLeft') {
+      nextIndex = (currentIndex - 1 + utilizationTabButtons.length) % utilizationTabButtons.length;
+    } else if (event.key === 'Home') {
+      nextIndex = 0;
+    } else if (event.key === 'End') {
+      nextIndex = utilizationTabButtons.length - 1;
+    }
+    const nextButton = utilizationTabButtons[nextIndex];
+    if (nextButton && nextButton.dataset.tab) {
+      setActiveUtilizationTab(nextButton.dataset.tab);
+      nextButton.focus();
+    }
+  });
+}
+
+if (utilizationSortButton) {
+  utilizationSortButton.addEventListener('click', () => {
+    utilizationSortDescending = !utilizationSortDescending;
+    refreshUtilizationLocationTable();
+  });
+}
 
 if (chargesRangeControl) {
   const focusOption = (option) => {
