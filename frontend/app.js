@@ -52,6 +52,10 @@ let locationWeekChart;
 let locationMap;
 let locationMapMarker;
 let locationMapResizeHandle;
+let locationMapResizeObserver;
+let locationMapResizeTimer;
+let locationMapResizeTimerType;
+let locationMapResizeRepeatCount = 0;
 
 const UTILIZATION_VIEW_IDS = ['locations', 'stations', 'ports'];
 const UTILIZATION_PAGE_SIZES = [10, 25, 100];
@@ -1387,6 +1391,76 @@ const renderLocationUsageChart = (chart, canvas, statusEl, timeline, granularity
   return newChart;
 };
 
+const invalidateLocationMapSize = () => {
+  if (locationMap) {
+    locationMap.invalidateSize();
+  }
+};
+
+const clearLocationMapResizeTimer = () => {
+  if (!locationMapResizeTimer) {
+    return;
+  }
+  if (locationMapResizeTimerType === 'raf' && typeof cancelAnimationFrame === 'function') {
+    cancelAnimationFrame(locationMapResizeTimer);
+  } else if (locationMapResizeTimerType === 'timeout') {
+    clearTimeout(locationMapResizeTimer);
+  }
+  locationMapResizeTimer = undefined;
+  locationMapResizeTimerType = undefined;
+};
+
+function runLocationMapResize() {
+  locationMapResizeTimer = undefined;
+  locationMapResizeTimerType = undefined;
+  invalidateLocationMapSize();
+  if (locationMapResizeRepeatCount > 0) {
+    locationMapResizeRepeatCount -= 1;
+    queueLocationMapResize();
+  }
+}
+
+function queueLocationMapResize() {
+  if (typeof requestAnimationFrame === 'function') {
+    locationMapResizeTimerType = 'raf';
+    locationMapResizeTimer = requestAnimationFrame(runLocationMapResize);
+    return;
+  }
+  locationMapResizeTimerType = 'timeout';
+  locationMapResizeTimer = setTimeout(runLocationMapResize, 30);
+}
+
+const scheduleLocationMapResize = (additionalFrames = 2) => {
+  if (!locationMap) {
+    return;
+  }
+  locationMapResizeRepeatCount = Math.max(locationMapResizeRepeatCount, Math.max(0, additionalFrames));
+  if (!locationMapResizeTimer) {
+    queueLocationMapResize();
+  }
+};
+
+const attachLocationMapResizeObserver = () => {
+  if (!locationMapContainer || typeof ResizeObserver !== 'function') {
+    return;
+  }
+  if (locationMapResizeObserver) {
+    return;
+  }
+  locationMapResizeObserver = new ResizeObserver(() => {
+    scheduleLocationMapResize(2);
+  });
+  locationMapResizeObserver.observe(locationMapContainer);
+};
+
+const detachLocationMapResizeObserver = () => {
+  if (!locationMapResizeObserver) {
+    return;
+  }
+  locationMapResizeObserver.disconnect();
+  locationMapResizeObserver = undefined;
+};
+
 const updateLocationMap = (coords) => {
   if (!locationMapContainer) {
     return;
@@ -1401,6 +1475,9 @@ const updateLocationMap = (coords) => {
         window.removeEventListener('resize', locationMapResizeHandle);
         locationMapResizeHandle = undefined;
       }
+      detachLocationMapResizeObserver();
+      clearLocationMapResizeTimer();
+      locationMapResizeRepeatCount = 0;
       locationMap.remove();
       locationMap = undefined;
       locationMapMarker = undefined;
@@ -1413,6 +1490,9 @@ const updateLocationMap = (coords) => {
   }
 
   if (typeof window.L === 'undefined') {
+    detachLocationMapResizeObserver();
+    clearLocationMapResizeTimer();
+    locationMapResizeRepeatCount = 0;
     if (locationMapNoteEl) {
       locationMapNoteEl.textContent = 'Map library failed to load.';
     }
@@ -1426,22 +1506,21 @@ const updateLocationMap = (coords) => {
       attribution: '© OpenStreetMap contributors',
     }).addTo(locationMap);
 
-    const invalidateMapSize = () => {
-      if (locationMap) {
-        locationMap.invalidateSize();
-      }
-    };
-
     locationMapResizeHandle = () => {
-      window.requestAnimationFrame(invalidateMapSize);
+      scheduleLocationMapResize(3);
     };
     window.addEventListener('resize', locationMapResizeHandle);
 
-    if (typeof queueMicrotask === 'function') {
-      queueMicrotask(invalidateMapSize);
-    } else {
-      setTimeout(invalidateMapSize, 0);
-    }
+    locationMap.whenReady(() => {
+      scheduleLocationMapResize(3);
+    });
+
+    attachLocationMapResizeObserver();
+    scheduleLocationMapResize(12);
+
+    locationMap.on('load', () => {
+      scheduleLocationMapResize(2);
+    });
   }
 
   if (locationMapMarker) {
@@ -1449,7 +1528,7 @@ const updateLocationMap = (coords) => {
   }
   locationMapMarker = window.L.marker([lat, lon]).addTo(locationMap);
   locationMap.setView([lat, lon], 16);
-  locationMap.invalidateSize();
+  scheduleLocationMapResize(6);
 
   if (locationMapNoteEl) {
     locationMapNoteEl.textContent = 'Map data © OpenStreetMap contributors.';
