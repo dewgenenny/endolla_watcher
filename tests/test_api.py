@@ -113,17 +113,58 @@ def test_dashboard_cache(monkeypatch, tmp_path, db_url):
     monkeypatch.setattr(api, "fetch_once", fake_fetch_once)
 
     with TestClient(api.app) as client:
+        assert calls["count"] == 1
         first = client.get("/api/dashboard")
         assert first.status_code == 200
         assert first.json() == {"calls": 1}
+        assert calls["count"] == 1
 
         second = client.get("/api/dashboard")
         assert second.status_code == 200
         assert second.json() == {"calls": 1}
+        assert calls["count"] == 1
 
         refresh = client.post("/api/refresh")
         assert refresh.status_code == 202
+        assert calls["count"] == 2
 
         third = client.get("/api/dashboard")
         assert third.status_code == 200
         assert third.json() == {"calls": 2}
+        assert calls["count"] == 2
+
+
+def test_dashboard_cache_presets(monkeypatch, tmp_path, db_url):
+    locations = tmp_path / "locations.json"
+    locations.write_text(
+        json.dumps({"locations": [{"id": "L1", "latitude": 41.0, "longitude": 2.0}]}),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setenv("ENDOLLA_DB_URL", db_url)
+    monkeypatch.setenv("ENDOLLA_AUTO_FETCH", "0")
+    monkeypatch.setenv("ENDOLLA_LOCATIONS_FILE", str(locations))
+    monkeypatch.setenv("ENDOLLA_DASHBOARD_CACHE_TTL", "3600")
+    monkeypatch.setenv("ENDOLLA_DASHBOARD_CACHE_PRESETS", "10:hour")
+
+    module = importlib.import_module("endolla_watcher.api")
+    api = importlib.reload(module)
+
+    calls: list[tuple[int, str]] = []
+
+    def fake_build(settings, locations_map, days, granularity):
+        calls.append((days, granularity))
+        return {"days": days, "granularity": granularity}
+
+    def fake_fetch_once(db_url_value, dataset_file):
+        return None
+
+    monkeypatch.setattr(api, "_build_dashboard", fake_build)
+    monkeypatch.setattr(api, "fetch_once", fake_fetch_once)
+
+    with TestClient(api.app) as client:
+        assert calls == [(10, "hour")]
+        first = client.get("/api/dashboard", params={"days": 10, "granularity": "hour"})
+        assert first.status_code == 200
+        assert first.json() == {"days": 10, "granularity": "hour"}
+        assert calls == [(10, "hour")]
