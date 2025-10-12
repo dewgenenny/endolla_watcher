@@ -63,6 +63,7 @@ let locationDayChart;
 let locationWeekChart;
 let locationMap;
 let locationMapMarker;
+let locationMapMarkerElement;
 let locationMapResizeHandle;
 let locationMapResizeObserver;
 let locationMapResizeTimer;
@@ -2196,7 +2197,13 @@ const applyPendingLocationMarker = () => {
   if (locationMapMarker && typeof locationMapMarker.remove === 'function') {
     locationMapMarker.remove();
   }
-  locationMapMarker = new maplibregl.Marker({ color: '#dc2626' })
+  if (!locationMapMarkerElement) {
+    const markerElement = document.createElement('span');
+    markerElement.className = 'location-map-marker';
+    markerElement.setAttribute('aria-hidden', 'true');
+    locationMapMarkerElement = markerElement;
+  }
+  locationMapMarker = new maplibregl.Marker({ element: locationMapMarkerElement, anchor: 'center' })
     .setLngLat([lon, lat])
     .addTo(locationMap);
   locationMap.jumpTo({ center: [lon, lat], zoom: 16 });
@@ -2230,6 +2237,7 @@ const updateLocationMap = (coords) => {
       }
       locationMap = undefined;
       locationMapMarker = undefined;
+      locationMapMarkerElement = undefined;
     }
     locationMapContainer.innerHTML = '';
     if (locationMapNoteEl) {
@@ -2246,6 +2254,7 @@ const updateLocationMap = (coords) => {
     if (locationMapNoteEl) {
       locationMapNoteEl.textContent = 'Map unavailable because MapLibre GL JS failed to load.';
     }
+    locationMapMarkerElement = undefined;
     return;
   }
 
