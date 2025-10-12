@@ -2200,14 +2200,21 @@ const applyPendingLocationMarker = () => {
   if (!locationMapMarkerElement) {
     const markerElement = document.createElement('div');
     markerElement.classList.add('location-map-marker');
-    markerElement.setAttribute('aria-hidden', 'true');
-    markerElement.style.width = '18px';
-    markerElement.style.height = '18px';
-    markerElement.style.borderRadius = '999px';
-    markerElement.style.pointerEvents = 'none';
+    markerElement.setAttribute('role', 'img');
+    markerElement.setAttribute('aria-label', 'Charging station');
+
+    const markerDot = document.createElement('span');
+    markerDot.classList.add('location-map-marker__dot');
+    markerDot.setAttribute('aria-hidden', 'true');
+
+    const markerLabel = document.createElement('span');
+    markerLabel.classList.add('location-map-marker__label');
+    markerLabel.textContent = 'Charging station';
+
+    markerElement.append(markerLabel, markerDot);
     locationMapMarkerElement = markerElement;
   }
-  locationMapMarker = new maplibregl.Marker(locationMapMarkerElement, { anchor: 'center' })
+  locationMapMarker = new maplibregl.Marker({ element: locationMapMarkerElement, anchor: 'bottom' })
     .setLngLat([lon, lat])
     .addTo(locationMap);
   locationMap.jumpTo({ center: [lon, lat], zoom: 16 });
