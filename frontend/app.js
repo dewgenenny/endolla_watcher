@@ -26,6 +26,7 @@ const locationDetailRoot = document.getElementById('location-detail');
 const locationLoadingEl = document.getElementById('location-loading');
 const locationErrorEl = document.getElementById('location-error');
 const locationTitleEl = document.getElementById('location-title');
+const locationAddressEl = document.getElementById('location-address');
 const locationUpdatedEl = document.getElementById('location-updated');
 const locationStationsEl = document.getElementById('location-stations');
 const locationPortsEl = document.getElementById('location-ports');
@@ -1628,6 +1629,23 @@ const populateLocationDetail = (locationId, details) => {
     locationTitleEl.textContent = `Location ${locationId}`;
   }
   document.title = `Location ${locationId} – Endolla Watcher`;
+
+  if (locationAddressEl) {
+    const addressSource =
+      typeof details?.address === 'string'
+        ? details.address
+        : typeof details?.coordinates?.address === 'string'
+          ? details.coordinates.address
+          : '';
+    const address = addressSource.trim();
+    if (address) {
+      locationAddressEl.textContent = address;
+      locationAddressEl.hidden = false;
+    } else {
+      locationAddressEl.textContent = '';
+      locationAddressEl.hidden = true;
+    }
+  }
 
   const updatedIso = details?.updated;
   if (locationUpdatedEl) {

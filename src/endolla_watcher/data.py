@@ -4,6 +4,78 @@ from pathlib import Path
 from typing import Any, Dict, List
 import requests
 
+_ADDRESS_KEYWORDS = (
+    "address",
+    "street",
+    "road",
+    "via",
+    "carrer",
+    "avenue",
+    "avinguda",
+    "calle",
+    "numero",
+    "number",
+    "postal",
+    "postcode",
+    "zip",
+    "city",
+    "municip",
+    "distric",
+    "barri",
+    "barrio",
+    "neigh",
+    "locality",
+    "provinc",
+    "pobl",
+    "ciutat",
+)
+
+
+def _should_collect_address(key: str) -> bool:
+    key_lower = str(key).lower()
+    return any(keyword in key_lower for keyword in _ADDRESS_KEYWORDS)
+
+
+def _collect_address_components(value: Any, components: List[str], *, allow_all: bool = False) -> None:
+    if value is None:
+        return
+    if isinstance(value, dict):
+        for key, val in value.items():
+            if allow_all or _should_collect_address(key):
+                _collect_address_components(val, components, allow_all=False)
+        return
+    if isinstance(value, (list, tuple, set)):
+        for item in value:
+            _collect_address_components(item, components, allow_all=allow_all)
+        return
+    if isinstance(value, (int, float)):
+        text = str(value).strip()
+    elif isinstance(value, str):
+        text = value.strip()
+    else:
+        return
+    if text and text not in components:
+        components.append(text)
+
+
+def _extract_location_address(entry: Dict[str, Any]) -> str | None:
+    components: List[str] = []
+    address_field = entry.get("address")
+    if address_field is not None:
+        _collect_address_components(
+            address_field,
+            components,
+            allow_all=isinstance(address_field, str),
+        )
+    for key, value in entry.items():
+        if key == "address":
+            continue
+        if _should_collect_address(key):
+            _collect_address_components(value, components, allow_all=True)
+    if components:
+        return ", ".join(components)
+    return None
+
 logger = logging.getLogger(__name__)
 
 # Public download endpoint for the Endolla dataset
@@ -92,7 +164,11 @@ def parse_locations(data: Any) -> Dict[str, Dict[str, float]]:
         if loc_id is None or lat is None or lon is None:
             continue
         try:
-            result[str(loc_id)] = {"lat": float(lat), "lon": float(lon)}
+            record = {"lat": float(lat), "lon": float(lon)}
+            address = _extract_location_address(it)
+            if address:
+                record["address"] = address
+            result[str(loc_id)] = record
         except (TypeError, ValueError):
             logger.debug("Skipping invalid location entry: %s", it)
     logger.debug("Parsed %d location coordinates", len(result))
