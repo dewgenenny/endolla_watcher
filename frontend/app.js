@@ -51,6 +51,7 @@ let locationDayChart;
 let locationWeekChart;
 let locationMap;
 let locationMapMarker;
+let locationMapResizeHandle;
 
 const UTILIZATION_VIEW_IDS = ['locations', 'stations', 'ports'];
 const UTILIZATION_PAGE_SIZES = [10, 25, 100];
@@ -1396,6 +1397,10 @@ const updateLocationMap = (coords) => {
 
   if (!hasCoords) {
     if (locationMap) {
+      if (locationMapResizeHandle) {
+        window.removeEventListener('resize', locationMapResizeHandle);
+        locationMapResizeHandle = undefined;
+      }
       locationMap.remove();
       locationMap = undefined;
       locationMapMarker = undefined;
@@ -1420,6 +1425,23 @@ const updateLocationMap = (coords) => {
       maxZoom: 19,
       attribution: '© OpenStreetMap contributors',
     }).addTo(locationMap);
+
+    const invalidateMapSize = () => {
+      if (locationMap) {
+        locationMap.invalidateSize();
+      }
+    };
+
+    locationMapResizeHandle = () => {
+      window.requestAnimationFrame(invalidateMapSize);
+    };
+    window.addEventListener('resize', locationMapResizeHandle);
+
+    if (typeof queueMicrotask === 'function') {
+      queueMicrotask(invalidateMapSize);
+    } else {
+      setTimeout(invalidateMapSize, 0);
+    }
   }
 
   if (locationMapMarker) {
@@ -1427,6 +1449,7 @@ const updateLocationMap = (coords) => {
   }
   locationMapMarker = window.L.marker([lat, lon]).addTo(locationMap);
   locationMap.setView([lat, lon], 16);
+  locationMap.invalidateSize();
 
   if (locationMapNoteEl) {
     locationMapNoteEl.textContent = 'Map data © OpenStreetMap contributors.';
