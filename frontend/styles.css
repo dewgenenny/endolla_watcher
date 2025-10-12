@@ -199,11 +199,26 @@ h2 {
   opacity: 0.9;
 }
 
-.chart-card canvas {
+.chart-visual {
+  position: relative;
+  height: clamp(240px, 45vh, 320px);
+  border-radius: inherit;
+  overflow: hidden;
+}
+
+.chart-card > .chart-visual:first-child {
+  margin-top: 0;
+}
+
+.chart-card .section-header + .chart-visual {
+  margin-top: 1.5rem;
+}
+
+.chart-visual canvas {
   position: relative;
   display: block;
   width: 100%;
-  height: 280px;
+  height: 100%;
   z-index: 1;
 }
 
