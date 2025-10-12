@@ -3,42 +3,50 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
   <title>About &ndash; Endolla Watcher</title>
   <link
     rel="icon"
     type="image/svg+xml"
-    href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%2300418a'/%3E%3Cpath d='M20 20h24v24H20z' fill='%23f7c948'/%3E%3Ccircle cx='32' cy='32' r='10' fill='%23ffffff' opacity='.85'/%3E%3C/svg%3E"
+    href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%2300418a'/%3E%3Cpath d='M20 20h24v24H20z' fill='%23f7c948'/%3E%3Ccircle cx='32' cy='32' r='10' fill='%23ffffff' opacity='.85'/%3E%3C/svg%3E'
   >
-  <link rel="stylesheet" href="styles.css?v=20241013">
+  <link rel="stylesheet" href="2025.css?v=20250101">
 </head>
 <body>
   <header class="site-header">
     <div class="container">
-      <h1>Endolla Watcher</h1>
-      <nav>
-        <a href="index.html">Dashboard</a>
-        <a href="locations.html">Locations</a>
-        <a href="problematic.html">Problematic</a>
-        <a href="about.html" aria-current="page">About</a>
+      <nav class="navbar u-glass" aria-label="Primary">
+        <div class="navbar__brand">
+          <span class="navbar__title">Endolla Watcher</span>
+        </div>
+        <div class="navbar__spacer"></div>
+        <div class="navbar__links">
+          <a href="index.html" class="navbar__link">Dashboard</a>
+          <a href="locations.html" class="navbar__link">Locations</a>
+          <a href="problematic.html" class="navbar__link">Problematic</a>
+          <a href="about.html" class="navbar__link" aria-current="page">About</a>
+        </div>
       </nav>
     </div>
   </header>
-  <main class="container">
-    <article class="content">
-      <h2>About</h2>
-      <p>
-        Endolla Watcher keeps an eye on Barcelona's public charging network. It highlights stations that appear inactive
-        or unavailable so issues can be resolved quickly.
-      </p>
-      <p>
-        The dashboard is powered by a small Python backend that continuously ingests the Endolla open data feed and exposes
-        a JSON API. This static site consumes that API to render live statistics without the need for GitHub Pages.
-      </p>
-      <p>
-        Deployments are managed through Argo CD. The backend and frontend run as independent workloads to make scaling and
-        upgrades straightforward.
-      </p>
-    </article>
+  <main class="page-main">
+    <div class="container">
+      <article class="content">
+        <h2>About</h2>
+        <p>
+          Endolla Watcher keeps an eye on Barcelona's public charging network. It highlights stations that appear inactive
+          or unavailable so issues can be resolved quickly.
+        </p>
+        <p>
+          The dashboard is powered by a small Python backend that continuously ingests the Endolla open data feed and exposes
+          a JSON API. This static site consumes that API to render live statistics without the need for GitHub Pages.
+        </p>
+        <p>
+          Deployments are managed through Argo CD. The backend and frontend run as independent workloads to make scaling and
+          upgrades straightforward.
+        </p>
+      </article>
+    </div>
   </main>
   <footer class="site-footer">
     <div class="container">

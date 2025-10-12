@@ -7,6 +7,6 @@ COPY about.html /usr/share/nginx/html/about.html
 COPY locations.html /usr/share/nginx/html/locations.html
 COPY location.html /usr/share/nginx/html/location.html
 COPY problematic.html /usr/share/nginx/html/problematic.html
-COPY styles.css /usr/share/nginx/html/styles.css
+COPY 2025.css /usr/share/nginx/html/2025.css
 COPY app.js /usr/share/nginx/html/app.js
 COPY config.js /usr/share/nginx/html/config.js

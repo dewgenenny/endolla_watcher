@@ -3,189 +3,201 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
   <title>Endolla Watcher</title>
   <link
     rel="icon"
     type="image/svg+xml"
     href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%2300418a'/%3E%3Cpath d='M20 20h24v24H20z' fill='%23f7c948'/%3E%3Ccircle cx='32' cy='32' r='10' fill='%23ffffff' opacity='.85'/%3E%3C/svg%3E"
   >
-  <link rel="stylesheet" href="styles.css?v=20241013">
+  <link rel="stylesheet" href="2025.css?v=20250101">
 </head>
 <body>
   <header class="site-header">
     <div class="container">
-      <h1>Endolla Watcher</h1>
-      <nav>
-        <a href="index.html" aria-current="page">Dashboard</a>
-        <a href="locations.html">Locations</a>
-        <a href="problematic.html">Problematic</a>
-        <a href="about.html">About</a>
+      <nav class="navbar u-glass" aria-label="Primary">
+        <div class="navbar__brand">
+          <span class="navbar__title">Endolla Watcher</span>
+        </div>
+        <div class="navbar__spacer"></div>
+        <div class="navbar__links">
+          <a href="index.html" class="navbar__link" aria-current="page">Dashboard</a>
+          <a href="locations.html" class="navbar__link">Locations</a>
+          <a href="problematic.html" class="navbar__link">Problematic</a>
+          <a href="about.html" class="navbar__link">About</a>
+        </div>
       </nav>
     </div>
   </header>
-  <main class="container">
-    <section class="summary" aria-live="polite">
-      <h2>Network Overview</h2>
-      <div class="grid" id="summary-cards">
-        <article class="card">
-          <h3>Total ports</h3>
-          <p id="summary-chargers">–</p>
-        </article>
-        <article class="card">
-          <h3>Unavailable</h3>
-          <p id="summary-unavailable">–</p>
-        </article>
-        <article class="card">
-          <h3>Charging now</h3>
-          <p id="summary-charging">–</p>
-        </article>
-        <article class="card">
-          <h3>Sessions (total)</h3>
-          <p id="summary-sessions">–</p>
-        </article>
-        <article class="card">
-          <h3>Charges today</h3>
-          <p id="summary-charges-today">–</p>
-        </article>
-        <article class="card">
-          <h3>Avg session (24h)</h3>
-          <p id="summary-avg-session">–</p>
-        </article>
-      </div>
-      <div class="meta" id="summary-meta"></div>
-    </section>
+  <main class="page-main">
+    <div class="container">
+      <section class="section summary" aria-live="polite">
+        <h2>Network Overview</h2>
+        <div class="grid" id="summary-cards">
+          <article class="card">
+            <h3 class="card__eyebrow">Total ports</h3>
+            <p class="metric-value" id="summary-chargers">–</p>
+          </article>
+          <article class="card">
+            <h3 class="card__eyebrow">Unavailable</h3>
+            <p class="metric-value" id="summary-unavailable">–</p>
+          </article>
+          <article class="card">
+            <h3 class="card__eyebrow">Charging now</h3>
+            <p class="metric-value" id="summary-charging">–</p>
+          </article>
+          <article class="card">
+            <h3 class="card__eyebrow">Sessions (total)</h3>
+            <p class="metric-value" id="summary-sessions">–</p>
+          </article>
+          <article class="card">
+            <h3 class="card__eyebrow">Charges today</h3>
+            <p class="metric-value" id="summary-charges-today">–</p>
+          </article>
+          <article class="card">
+            <h3 class="card__eyebrow">Avg session (24h)</h3>
+            <p class="metric-value" id="summary-avg-session">–</p>
+          </article>
+        </div>
+        <div class="meta" id="summary-meta"></div>
+      </section>
 
-    <section class="utilization" aria-labelledby="utilization-heading">
-      <div class="section-header">
-        <div class="section-title">
-          <h2 id="utilization-heading">Utilization Snapshot</h2>
-          <p class="muted" id="utilization-note">Loading utilization metrics…</p>
-        </div>
-      </div>
-      <div class="utilization-panel">
-        <div class="grid utilization-grid">
-          <article class="card">
-            <h3>Ports tracked</h3>
-            <p id="utilization-ports">–</p>
-          </article>
-          <article class="card">
-            <h3>Stations tracked</h3>
-            <p id="utilization-stations">–</p>
-          </article>
-          <article class="card">
-            <h3>Locations covered</h3>
-            <p id="utilization-locations">–</p>
-          </article>
-          <article class="card">
-            <h3>Sessions / port (day)</h3>
-            <p id="utilization-session-day">–</p>
-          </article>
-          <article class="card">
-            <h3>Sessions / port (hour)</h3>
-            <p id="utilization-session-hour">–</p>
-          </article>
-          <article class="card">
-            <h3>Occupied time</h3>
-            <p id="utilization-occupied">–</p>
-          </article>
-          <article class="card">
-            <h3>Active charging</h3>
-            <p id="utilization-active">–</p>
-          </article>
-          <article class="card">
-            <h3>Availability</h3>
-            <p id="utilization-availability">–</p>
-          </article>
-        </div>
-      </div>
-      <p class="muted utilization-panel-note">
-        Explore detailed location-level utilization on the
-        <a href="locations.html">Locations overview</a> page.
-      </p>
-    </section>
-
-    <section class="charges-insight" aria-labelledby="charges-heading">
-      <div class="section-header">
-        <div class="section-title">
-          <h2 id="charges-heading">Charging Momentum</h2>
-          <p class="chart-subtitle"><span id="charges-total">–</span> charges <span id="charges-range-window">in this period</span></p>
-        </div>
-        <div class="range-select">
-          <span class="range-label">Range</span>
-          <div
-            id="charges-range"
-            class="range-options"
-            role="radiogroup"
-            aria-label="Charging data range"
-          >
-            <button
-              type="button"
-              class="range-option is-active"
-              role="radio"
-              aria-checked="true"
-              data-value="5"
-            >
-              5 days
-            </button>
-            <button
-              type="button"
-              class="range-option"
-              role="radio"
-              aria-checked="false"
-              data-value="10"
-            >
-              10 days
-            </button>
-            <button
-              type="button"
-              class="range-option"
-              role="radio"
-              aria-checked="false"
-              data-value="15"
-            >
-              15 days
-            </button>
-            <button
-              type="button"
-              class="range-option"
-              role="radio"
-              aria-checked="false"
-              data-value="30"
-            >
-              30 days
-            </button>
+      <section class="section utilization" aria-labelledby="utilization-heading">
+        <div class="section-header">
+          <div class="section-title">
+            <h2 id="utilization-heading">Utilization Snapshot</h2>
+            <p class="muted" id="utilization-note">Loading utilization metrics…</p>
           </div>
         </div>
-      </div>
-      <div class="chart-card">
-        <div class="chart-visual">
-          <canvas
-            id="charges-chart"
-            role="img"
-            aria-label="Line chart showing daily charging sessions"
-          ></canvas>
-          <div id="charges-chart-status" class="chart-status" hidden>Loading charging trend…</div>
+        <div class="utilization-panel">
+          <div class="grid utilization-grid">
+            <article class="card">
+              <h3 class="card__eyebrow">Ports tracked</h3>
+              <p class="metric-value" id="utilization-ports">–</p>
+            </article>
+            <article class="card">
+              <h3 class="card__eyebrow">Stations tracked</h3>
+              <p class="metric-value" id="utilization-stations">–</p>
+            </article>
+            <article class="card">
+              <h3 class="card__eyebrow">Locations covered</h3>
+              <p class="metric-value" id="utilization-locations">–</p>
+            </article>
+            <article class="card">
+              <h3 class="card__eyebrow">Sessions / port (day)</h3>
+              <p class="metric-value" id="utilization-session-day">–</p>
+            </article>
+            <article class="card">
+              <h3 class="card__eyebrow">Sessions / port (hour)</h3>
+              <p class="metric-value" id="utilization-session-hour">–</p>
+            </article>
+            <article class="card">
+              <h3 class="card__eyebrow">Occupied time</h3>
+              <p class="metric-value" id="utilization-occupied">–</p>
+            </article>
+            <article class="card">
+              <h3 class="card__eyebrow">Active charging</h3>
+              <p class="metric-value" id="utilization-active">–</p>
+            </article>
+            <article class="card">
+              <h3 class="card__eyebrow">Availability</h3>
+              <p class="metric-value" id="utilization-availability">–</p>
+            </article>
+          </div>
         </div>
-      </div>
-    </section>
+        <p class="muted utilization-panel-note">
+          Explore detailed location-level utilization on the
+          <a href="locations.html">Locations overview</a> page.
+        </p>
+      </section>
 
-    <section class="rules">
-      <h2>Rule Summary</h2>
-      <ul id="rule-summary" class="rule-list"></ul>
-    </section>
+      <section class="section charges-insight" aria-labelledby="charges-heading">
+        <div class="section-header">
+          <div class="section-title">
+            <h2 id="charges-heading">Charging Momentum</h2>
+            <p class="chart-subtitle"><span id="charges-total">–</span> charges <span id="charges-range-window">in this period</span></p>
+          </div>
+          <div class="range-select">
+            <span class="range-label">Range</span>
+            <div
+              id="charges-range"
+              class="range-options"
+              role="radiogroup"
+              aria-label="Charging data range"
+            >
+              <button
+                type="button"
+                class="range-option is-active"
+                role="radio"
+                aria-checked="true"
+                data-value="5"
+              >
+                5 days
+              </button>
+              <button
+                type="button"
+                class="range-option"
+                role="radio"
+                aria-checked="false"
+                data-value="10"
+              >
+                10 days
+              </button>
+              <button
+                type="button"
+                class="range-option"
+                role="radio"
+                aria-checked="false"
+                data-value="15"
+              >
+                15 days
+              </button>
+              <button
+                type="button"
+                class="range-option"
+                role="radio"
+                aria-checked="false"
+                data-value="30"
+              >
+                30 days
+              </button>
+            </div>
+          </div>
+        </div>
+        <article class="card chart-card">
+          <div class="card__body">
+            <div class="chart-visual">
+              <canvas
+                id="charges-chart"
+                role="img"
+                aria-label="Line chart showing daily charging sessions"
+              ></canvas>
+              <div id="charges-chart-status" class="chart-status" hidden>Loading charging trend…</div>
+            </div>
+          </div>
+        </article>
+      </section>
 
-    <section class="history">
-      <h2>Recent Charging Activity</h2>
-      <table>
-        <thead>
-          <tr>
-            <th scope="col">Day</th>
-            <th scope="col">Sessions started</th>
-          </tr>
-        </thead>
-        <tbody id="daily-sessions"></tbody>
-      </table>
-    </section>
+      <section class="section rules">
+        <h2>Rule Summary</h2>
+        <ul id="rule-summary" class="rule-list"></ul>
+      </section>
+
+      <section class="section history">
+        <h2>Recent Charging Activity</h2>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th scope="col">Day</th>
+                <th scope="col">Sessions started</th>
+              </tr>
+            </thead>
+            <tbody id="daily-sessions"></tbody>
+          </table>
+        </div>
+      </section>
+    </div>
   </main>
   <footer class="site-footer">
     <div class="container">
