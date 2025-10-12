@@ -68,14 +68,15 @@ let locationMapResizeObserver;
 let locationMapResizeTimer;
 let locationMapResizeTimerType;
 let locationMapResizeRepeatCount = 0;
+let locationMapReady = false;
+let locationMapPendingCoords = null;
 let heatmapMap;
-let heatmapLayer;
-let heatmapMarkerLayer;
 let heatmapDataRows = null;
 let heatmapCoordinateLookup = null;
 let heatmapMetricKey = 'occupation_utilization_pct';
 let heatmapResizeObserver;
 let heatmapResizeHandle;
+let heatmapPendingBounds;
 
 const UTILIZATION_VIEW_IDS = ['locations', 'stations', 'ports'];
 const UTILIZATION_PAGE_SIZES = [10, 25, 100];
@@ -91,6 +92,19 @@ const HEATMAP_METRICS = {
   },
 };
 const HEATMAP_DEFAULT_METRIC = 'occupation_utilization_pct';
+
+const MAP_STYLE_URL = 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json';
+const MAP_DEFAULT_CENTER = [2.1734, 41.3851];
+const MAP_DEFAULT_ZOOM = 12;
+const MAP_ATTRIBUTION = '© OpenStreetMap contributors, © CARTO';
+const HEATMAP_SOURCE_ID = 'utilization-heatmap';
+const HEATMAP_HEAT_LAYER_ID = 'utilization-heatmap-heat';
+const HEATMAP_CIRCLE_LAYER_ID = 'utilization-heatmap-points';
+const HEATMAP_MAX_POINT_ZOOM = 14;
+
+let heatmapMapReady = false;
+let heatmapLatestEntries = [];
+let heatmapPopup;
 
 const utilizationViewState = new Map();
 const utilizationLimitControls = new Map();
@@ -741,6 +755,9 @@ const updateHeatmapDescription = () => {
   heatmapDescriptionEl.hidden = !description;
 };
 
+const isMapLibreAvailable = () =>
+  typeof window !== 'undefined' && window.maplibregl && typeof window.maplibregl.Map === 'function';
+
 const ensureHeatmapMap = () => {
   if (!heatmapMapContainer) {
     return null;
@@ -748,80 +765,292 @@ const ensureHeatmapMap = () => {
   if (heatmapMap) {
     return heatmapMap;
   }
-  if (!window.L) {
+  if (!isMapLibreAvailable()) {
     setHeatmapStatus('Map library failed to load.');
     if (heatmapNoteEl) {
-      heatmapNoteEl.textContent = 'Map unavailable because Leaflet failed to load.';
-    }
-    return null;
-  }
-  if (typeof window.L.heatLayer !== 'function') {
-    setHeatmapStatus('Heatmap layer failed to load.');
-    if (heatmapNoteEl) {
-      heatmapNoteEl.textContent = 'Heatmap overlay unavailable.';
+      heatmapNoteEl.textContent = 'Map unavailable because MapLibre GL JS failed to load.';
     }
     return null;
   }
 
-  heatmapMap = window.L.map(heatmapMapContainer, { attributionControl: false });
-  window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 19,
-  }).addTo(heatmapMap);
-  heatmapLayer = window.L.heatLayer([], {
-    radius: 28,
-    blur: 18,
-    maxZoom: 15,
-    minOpacity: 0.25,
-  }).addTo(heatmapMap);
-  heatmapMarkerLayer = window.L.layerGroup().addTo(heatmapMap);
+  const maplibregl = window.maplibregl;
+  heatmapMap = new maplibregl.Map({
+    container: heatmapMapContainer,
+    style: MAP_STYLE_URL,
+    center: MAP_DEFAULT_CENTER,
+    zoom: MAP_DEFAULT_ZOOM,
+    attributionControl: false,
+    cooperativeGestures: true,
+  });
 
-  if (heatmapNoteEl) {
-    heatmapNoteEl.textContent = 'Map data © OpenStreetMap contributors.';
+  heatmapMapReady = false;
+
+  const attribution = new maplibregl.AttributionControl({
+    compact: true,
+    customAttribution: MAP_ATTRIBUTION,
+  });
+  heatmapMap.addControl(attribution, 'bottom-right');
+
+  if (typeof maplibregl.NavigationControl === 'function') {
+    heatmapMap.addControl(new maplibregl.NavigationControl({ visualizePitch: false }), 'top-right');
   }
 
-  const invalidate = () => {
+  const handleResize = () => {
     if (heatmapMap) {
-      heatmapMap.invalidateSize();
+      heatmapMap.resize();
     }
   };
-  heatmapMap.whenReady(invalidate);
 
   if (typeof window.addEventListener === 'function') {
-    heatmapResizeHandle = () => {
-      if (typeof requestAnimationFrame === 'function') {
-        requestAnimationFrame(invalidate);
-      } else {
-        setTimeout(invalidate, 30);
-      }
-    };
+    heatmapResizeHandle = handleResize;
     window.addEventListener('resize', heatmapResizeHandle);
   }
 
   if (typeof ResizeObserver === 'function') {
-    heatmapResizeObserver = new ResizeObserver(() => invalidate());
+    heatmapResizeObserver = new ResizeObserver(handleResize);
     heatmapResizeObserver.observe(heatmapMapContainer);
+  }
+
+  heatmapMap.on('load', () => {
+    heatmapMapReady = true;
+
+    if (!heatmapMap?.getSource(HEATMAP_SOURCE_ID)) {
+      heatmapMap.addSource(HEATMAP_SOURCE_ID, {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] },
+      });
+    }
+
+    if (!heatmapMap.getLayer(HEATMAP_HEAT_LAYER_ID)) {
+      heatmapMap.addLayer({
+        id: HEATMAP_HEAT_LAYER_ID,
+        type: 'heatmap',
+        source: HEATMAP_SOURCE_ID,
+        paint: {
+          'heatmap-radius': [
+            'interpolate',
+            ['linear'],
+            ['zoom'],
+            10,
+            20,
+            13,
+            32,
+            16,
+            48,
+          ],
+          'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 10, 0.8, 16, 2.0],
+          'heatmap-opacity': 0.75,
+          'heatmap-weight': ['coalesce', ['get', 'intensity'], 0],
+        },
+      });
+    }
+
+    if (!heatmapMap.getLayer(HEATMAP_CIRCLE_LAYER_ID)) {
+      heatmapMap.addLayer({
+        id: HEATMAP_CIRCLE_LAYER_ID,
+        type: 'circle',
+        source: HEATMAP_SOURCE_ID,
+        minzoom: 11,
+        paint: {
+          'circle-radius': [
+            'interpolate',
+            ['linear'],
+            ['get', 'intensity'],
+            0,
+            6,
+            1,
+            14,
+          ],
+          'circle-color': [
+            'interpolate',
+            ['linear'],
+            ['get', 'intensity'],
+            0,
+            'hsl(210, 85%, 55%)',
+            0.5,
+            'hsl(120, 85%, 50%)',
+            1,
+            'hsl(0, 85%, 45%)',
+          ],
+          'circle-stroke-color': 'rgba(15, 23, 42, 0.55)',
+          'circle-stroke-width': 1,
+          'circle-opacity': 0.9,
+        },
+      });
+    }
+
+    if (!heatmapPopup) {
+      heatmapPopup = new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 12 });
+    }
+
+    heatmapMap.on('mouseenter', HEATMAP_CIRCLE_LAYER_ID, () => {
+      if (heatmapMap) {
+        heatmapMap.getCanvas().style.cursor = 'pointer';
+      }
+    });
+
+    heatmapMap.on('mouseleave', HEATMAP_CIRCLE_LAYER_ID, () => {
+      if (heatmapMap) {
+        heatmapMap.getCanvas().style.cursor = '';
+      }
+      if (heatmapPopup) {
+        heatmapPopup.remove();
+      }
+    });
+
+    heatmapMap.on('mousemove', HEATMAP_CIRCLE_LAYER_ID, (event) => {
+      const feature = event?.features?.[0];
+      if (!feature || !heatmapPopup) {
+        return;
+      }
+      const [lon, lat] = feature.geometry?.coordinates || [];
+      if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+        return;
+      }
+      const props = feature.properties || {};
+      const stationCount = Number.parseInt(props.stationCount, 10);
+      const portCount = Number.parseInt(props.portCount, 10);
+      const value = Number.parseFloat(props.value);
+      const container = document.createElement('div');
+      const title = document.createElement('strong');
+      title.textContent = `Location ${props.id ?? ''}`.trim();
+      container.appendChild(title);
+      const metricLine = document.createElement('div');
+      const definition = HEATMAP_METRICS[resolveHeatmapMetric(heatmapMetricKey)];
+      const label = definition?.label?.toLowerCase() || 'utilization';
+      metricLine.textContent = `${formatPercent(value, 1)} ${label}`;
+      container.appendChild(metricLine);
+      if (Number.isFinite(stationCount) || Number.isFinite(portCount)) {
+        const counts = document.createElement('div');
+        const stationText = Number.isFinite(stationCount)
+          ? `${stationCount} station${stationCount === 1 ? '' : 's'}`
+          : null;
+        const portText = Number.isFinite(portCount)
+          ? `${portCount} port${portCount === 1 ? '' : 's'}`
+          : null;
+        counts.textContent = [stationText, portText].filter(Boolean).join(' · ');
+        container.appendChild(counts);
+      }
+      if (props.address) {
+        const address = document.createElement('div');
+        address.textContent = props.address;
+        container.appendChild(address);
+      }
+      heatmapPopup.setLngLat([lon, lat]).setDOMContent(container).addTo(heatmapMap);
+    });
+
+    applyHeatmapEntries(heatmapLatestEntries);
+    if (Array.isArray(heatmapLatestEntries) && heatmapLatestEntries.length > 0) {
+      setHeatmapStatus(null);
+    }
+    if (heatmapPendingBounds) {
+      heatmapMap.fitBounds(heatmapPendingBounds, {
+        padding: 60,
+        maxZoom: HEATMAP_MAX_POINT_ZOOM,
+        duration: 0,
+      });
+      heatmapPendingBounds = undefined;
+    }
+  });
+
+  if (heatmapNoteEl) {
+    heatmapNoteEl.textContent = 'Map data © OpenStreetMap contributors, © CARTO.';
   }
 
   return heatmapMap;
 };
 
-const clearHeatmapLayers = () => {
-  if (heatmapLayer) {
-    heatmapLayer.setLatLngs([]);
+const toHeatmapFeatureCollection = (entries) => ({
+  type: 'FeatureCollection',
+  features: entries.map((entry) => ({
+    type: 'Feature',
+    geometry: { type: 'Point', coordinates: [entry.lon, entry.lat] },
+    properties: {
+      id: entry.id,
+      value: entry.value,
+      intensity: entry.intensity,
+      stationCount: entry.stationCount ?? '',
+      portCount: entry.portCount ?? '',
+      address: entry.address ?? '',
+    },
+  })),
+});
+
+const updateHeatmapSourceData = (entries) => {
+  if (!heatmapMapReady) {
+    return;
   }
-  if (heatmapMarkerLayer) {
-    heatmapMarkerLayer.clearLayers();
+  const source = heatmapMap?.getSource(HEATMAP_SOURCE_ID);
+  if (source) {
+    source.setData(toHeatmapFeatureCollection(entries));
   }
 };
 
-const getHeatmapColor = (value) => {
-  const numeric = Number.isFinite(value) ? value : Number(value);
-  const clamped = Number.isFinite(numeric)
-    ? Math.min(Math.max(numeric, 0), 1)
-    : 0;
-  const hue = 210 - clamped * 210;
-  const lightness = 55 - clamped * 15;
-  return `hsl(${Math.round(hue)}, 85%, ${Math.round(lightness)}%)`;
+const updateHeatmapBounds = (entries) => {
+  if (!entries.length) {
+    return;
+  }
+  if (!heatmapMapReady || !heatmapMap) {
+    if (!isMapLibreAvailable()) {
+      heatmapPendingBounds = undefined;
+      return;
+    }
+    const bounds = entries.reduce((acc, entry) => {
+      if (!acc) {
+        return [[entry.lon, entry.lat], [entry.lon, entry.lat]];
+      }
+      const [[west, south], [east, north]] = acc;
+      return [
+        [Math.min(west, entry.lon), Math.min(south, entry.lat)],
+        [Math.max(east, entry.lon), Math.max(north, entry.lat)],
+      ];
+    }, null);
+    heatmapPendingBounds = bounds
+      ? new window.maplibregl.LngLatBounds(bounds[0], bounds[1])
+      : undefined;
+    return;
+  }
+
+  if (typeof window.maplibregl?.LngLatBounds !== 'function') {
+    return;
+  }
+
+  const first = entries[0];
+  const bounds = entries.slice(1).reduce(
+    (acc, entry) => acc.extend([entry.lon, entry.lat]),
+    new window.maplibregl.LngLatBounds([first.lon, first.lat], [first.lon, first.lat]),
+  );
+
+  if (!heatmapMap) {
+    return;
+  }
+
+  if (entries.length === 1) {
+    heatmapMap.jumpTo({ center: [first.lon, first.lat], zoom: HEATMAP_MAX_POINT_ZOOM });
+    return;
+  }
+
+  if (bounds) {
+    heatmapMap.fitBounds(bounds, { padding: 60, maxZoom: HEATMAP_MAX_POINT_ZOOM, duration: 0 });
+  }
+};
+
+const applyHeatmapEntries = (entries) => {
+  heatmapLatestEntries = entries.slice();
+  updateHeatmapSourceData(entries);
+  if (heatmapPopup) {
+    heatmapPopup.remove();
+  }
+  updateHeatmapBounds(entries);
+};
+
+const clearHeatmapLayers = () => {
+  heatmapLatestEntries = [];
+  updateHeatmapSourceData([]);
+  if (heatmapPopup) {
+    heatmapPopup.remove();
+  }
+  heatmapPendingBounds = undefined;
 };
 
 const renderHeatmapList = (entries, metricKey) => {
@@ -1007,49 +1236,12 @@ const renderHeatmap = () => {
     return;
   }
 
-  heatmapLayer.setLatLngs(entries.map((entry) => [entry.lat, entry.lon, entry.intensity]));
-  heatmapMarkerLayer.clearLayers();
-
-  entries.forEach((entry) => {
-    const marker = window.L.circleMarker([entry.lat, entry.lon], {
-      radius: 6 + entry.intensity * 8,
-      color: 'rgba(15, 23, 42, 0.55)',
-      weight: 1,
-      fillColor: getHeatmapColor(entry.intensity),
-      fillOpacity: 0.85,
-    });
-    const tooltip = document.createElement('div');
-    const title = document.createElement('strong');
-    title.textContent = entry.address || `Location ${entry.id}`;
-    tooltip.appendChild(title);
-    const metricLine = document.createElement('div');
-    metricLine.textContent = `${formatPercent(entry.value, 1)} ${definition?.label?.toLowerCase() || 'utilization'}`;
-    tooltip.appendChild(metricLine);
-    const metaParts = [];
-    if (Number.isFinite(entry.stationCount) && entry.stationCount > 0) {
-      metaParts.push(`${formatNumber(entry.stationCount)} stations`);
-    }
-    if (Number.isFinite(entry.portCount) && entry.portCount > 0) {
-      metaParts.push(`${formatNumber(entry.portCount)} ports`);
-    }
-    if (metaParts.length > 0) {
-      const meta = document.createElement('div');
-      meta.className = 'muted';
-      meta.textContent = metaParts.join(' · ');
-      tooltip.appendChild(meta);
-    }
-    marker.bindTooltip(tooltip, { direction: 'top', sticky: true });
-    marker.addTo(heatmapMarkerLayer);
-  });
-
-  const bounds = window.L.latLngBounds(entries.map((entry) => [entry.lat, entry.lon]));
-  if (entries.length === 1) {
-    mapInstance.setView([entries[0].lat, entries[0].lon], 15);
-  } else if (bounds.isValid()) {
-    mapInstance.fitBounds(bounds.pad(0.1));
+  applyHeatmapEntries(entries);
+  if (heatmapMapReady) {
+    setHeatmapStatus(null);
+  } else {
+    setHeatmapStatus('Preparing map…');
   }
-
-  setHeatmapStatus(null);
 
   const values = entries.map((entry) => entry.value);
   const minValue = Math.min(...values);
@@ -1904,7 +2096,9 @@ const renderLocationUsageChart = (chart, canvas, statusEl, timeline, granularity
 
 const invalidateLocationMapSize = () => {
   if (locationMap) {
-    locationMap.invalidateSize();
+    if (typeof locationMap.resize === 'function') {
+      locationMap.resize();
+    }
   }
 };
 
@@ -1972,6 +2166,32 @@ const detachLocationMapResizeObserver = () => {
   locationMapResizeObserver = undefined;
 };
 
+const applyPendingLocationMarker = () => {
+  if (!locationMap || !locationMapReady || !locationMapPendingCoords) {
+    return;
+  }
+  if (!isMapLibreAvailable()) {
+    return;
+  }
+  const { lat, lon } = locationMapPendingCoords;
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+    return;
+  }
+  const maplibregl = window.maplibregl;
+  if (locationMapMarker && typeof locationMapMarker.remove === 'function') {
+    locationMapMarker.remove();
+  }
+  locationMapMarker = new maplibregl.Marker({ color: '#2563eb' })
+    .setLngLat([lon, lat])
+    .addTo(locationMap);
+  locationMap.jumpTo({ center: [lon, lat], zoom: 16 });
+  scheduleLocationMapResize(6);
+  locationMapPendingCoords = null;
+  if (locationMapNoteEl) {
+    locationMapNoteEl.textContent = 'Map data © OpenStreetMap contributors, © CARTO.';
+  }
+};
+
 const updateLocationMap = (coords) => {
   if (!locationMapContainer) {
     return;
@@ -1989,7 +2209,10 @@ const updateLocationMap = (coords) => {
       detachLocationMapResizeObserver();
       clearLocationMapResizeTimer();
       locationMapResizeRepeatCount = 0;
-      locationMap.remove();
+      locationMapReady = false;
+      if (typeof locationMap.remove === 'function') {
+        locationMap.remove();
+      }
       locationMap = undefined;
       locationMapMarker = undefined;
     }
@@ -1997,53 +2220,66 @@ const updateLocationMap = (coords) => {
     if (locationMapNoteEl) {
       locationMapNoteEl.textContent = 'No coordinates available for this location.';
     }
+    locationMapPendingCoords = null;
     return;
   }
 
-  if (typeof window.L === 'undefined') {
+  if (!isMapLibreAvailable()) {
     detachLocationMapResizeObserver();
     clearLocationMapResizeTimer();
     locationMapResizeRepeatCount = 0;
     if (locationMapNoteEl) {
-      locationMapNoteEl.textContent = 'Map library failed to load.';
+      locationMapNoteEl.textContent = 'Map unavailable because MapLibre GL JS failed to load.';
     }
     return;
   }
 
   if (!locationMap) {
-    locationMap = window.L.map(locationMapContainer, { attributionControl: false });
-    window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      attribution: '© OpenStreetMap contributors',
-    }).addTo(locationMap);
+    const maplibregl = window.maplibregl;
+    locationMap = new maplibregl.Map({
+      container: locationMapContainer,
+      style: MAP_STYLE_URL,
+      center: MAP_DEFAULT_CENTER,
+      zoom: MAP_DEFAULT_ZOOM,
+      attributionControl: false,
+      cooperativeGestures: true,
+    });
+    locationMapReady = false;
+
+    const attribution = new maplibregl.AttributionControl({
+      compact: true,
+      customAttribution: MAP_ATTRIBUTION,
+    });
+    locationMap.addControl(attribution, 'bottom-right');
+
+    if (typeof maplibregl.NavigationControl === 'function') {
+      locationMap.addControl(new maplibregl.NavigationControl({ visualizePitch: false }), 'top-right');
+    }
+
+    locationMap.on('load', () => {
+      locationMapReady = true;
+      applyPendingLocationMarker();
+      scheduleLocationMapResize(2);
+    });
+
+    locationMap.on('render', () => {
+      if (!locationMapReady && locationMap?.isStyleLoaded?.()) {
+        locationMapReady = true;
+        applyPendingLocationMarker();
+      }
+    });
 
     locationMapResizeHandle = () => {
       scheduleLocationMapResize(3);
     };
     window.addEventListener('resize', locationMapResizeHandle);
 
-    locationMap.whenReady(() => {
-      scheduleLocationMapResize(3);
-    });
-
     attachLocationMapResizeObserver();
     scheduleLocationMapResize(12);
-
-    locationMap.on('load', () => {
-      scheduleLocationMapResize(2);
-    });
   }
 
-  if (locationMapMarker) {
-    locationMap.removeLayer(locationMapMarker);
-  }
-  locationMapMarker = window.L.marker([lat, lon]).addTo(locationMap);
-  locationMap.setView([lat, lon], 16);
-  scheduleLocationMapResize(6);
-
-  if (locationMapNoteEl) {
-    locationMapNoteEl.textContent = 'Map data © OpenStreetMap contributors.';
-  }
+  locationMapPendingCoords = { lat, lon };
+  applyPendingLocationMarker();
 };
 
 const populateLocationDetail = (locationId, details) => {
