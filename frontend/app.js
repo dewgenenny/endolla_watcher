@@ -838,7 +838,7 @@ const ensureHeatmapMap = () => {
             16,
             48,
           ],
-          'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 10, 0.8, 16, 2.0],
+          'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 10, 1.1, 16, 2.6],
           'heatmap-opacity': 0.75,
           'heatmap-weight': ['coalesce', ['get', 'intensity'], 0],
         },
@@ -937,6 +937,21 @@ const ensureHeatmapMap = () => {
         container.appendChild(address);
       }
       heatmapPopup.setLngLat([lon, lat]).setDOMContent(container).addTo(heatmapMap);
+    });
+
+    heatmapMap.on('click', HEATMAP_CIRCLE_LAYER_ID, (event) => {
+      const feature = event?.features?.[0];
+      const id = feature?.properties?.id;
+      if (!id) {
+        return;
+      }
+      const targetUrl = `location.html?id=${encodeURIComponent(id)}`;
+      const originalEvent = event?.originalEvent;
+      if (originalEvent && (originalEvent.ctrlKey || originalEvent.metaKey || originalEvent.button === 1)) {
+        window.open(targetUrl, '_blank', 'noopener');
+      } else {
+        window.location.href = targetUrl;
+      }
     });
 
     applyHeatmapEntries(heatmapLatestEntries);
