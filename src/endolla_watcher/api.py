@@ -421,7 +421,25 @@ async def location_details(location_id: str) -> Dict[str, Any]:
         raise HTTPException(status_code=404, detail="Location not found or no telemetry available")
 
     coords = locations.get(location_id)
-    details["coordinates"] = coords if coords else None
+    if isinstance(coords, dict):
+        lat = coords.get("lat")
+        lon = coords.get("lon")
+        coord_payload = None
+        if lat is not None and lon is not None:
+            coord_payload = {"lat": lat, "lon": lon}
+        address_value = coords.get("address")
+        address = address_value.strip() if isinstance(address_value, str) else None
+        if coord_payload is not None and address:
+            coord_payload["address"] = address
+        details["coordinates"] = coord_payload
+        if address:
+            details["address"] = address
+        elif "address" not in details:
+            details["address"] = None
+    else:
+        details["coordinates"] = None
+        if "address" not in details:
+            details["address"] = None
     return details
 
 
