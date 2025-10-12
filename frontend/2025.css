@@ -266,7 +266,7 @@ small, .muted { color: var(--text-3); font-size: var(--font-size-0); }
 .modal__body { padding: var(--space-4); }
 
 /* Nav / Toolbar */
-.navbar { position: sticky; top: 0; z-index: 50; display: flex; align-items: center; gap: var(--space-2); padding: 10px 14px; border-radius: 18px; margin: var(--space-3) auto; width: min(1100px, 94vw); backdrop-filter: blur(12px) saturate(160%); -webkit-backdrop-filter: blur(12px) saturate(160%); border: 1px solid var(--glass-border); background: linear-gradient(180deg, var(--bg-elev-2), transparent); box-shadow: var(--shadow-1); }
+.navbar { position: sticky; top: 0; z-index: 50; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); row-gap: var(--space-1); padding: 10px 14px; border-radius: 18px; margin: var(--space-3) auto; width: min(1100px, 100%); max-width: 100%; backdrop-filter: blur(12px) saturate(160%); -webkit-backdrop-filter: blur(12px) saturate(160%); border: 1px solid var(--glass-border); background: linear-gradient(180deg, var(--bg-elev-2), transparent); box-shadow: var(--shadow-1); }
 .navbar__title { font-weight: var(--font-weight-strong); letter-spacing: -0.02em; }
 .navbar__spacer { flex: 1; }
 
@@ -283,6 +283,10 @@ small, .muted { color: var(--text-3); font-size: var(--font-size-0); }
 /* -------------------------------
    5) States & Interactions
 ---------------------------------- */
+
+:where([hidden]) {
+  display: none !important;
+}
 
 :where(a, button, .button) { -webkit-tap-highlight-color: transparent; }
 :where(a, .link) { color: var(--accent); text-decoration: none; }
@@ -390,6 +394,7 @@ main {
   width: 100%;
   align-items: center;
   gap: var(--space-2);
+  row-gap: var(--space-1);
 }
 
 .navbar__brand {
@@ -404,8 +409,11 @@ main {
 
 .navbar__links {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--space-1);
+  row-gap: var(--space-1);
   align-items: center;
+  justify-content: flex-end;
 }
 
 .navbar__spacer {
@@ -872,9 +880,8 @@ main {
   font-size: var(--font-size-0);
 }
 
-@media (max-width: 640px) {
+@media (max-width: 900px) {
   .navbar {
-    flex-wrap: wrap;
     justify-content: center;
   }
 
@@ -886,7 +893,9 @@ main {
     width: 100%;
     justify-content: center;
   }
+}
 
+@media (max-width: 640px) {
   .table-scroll table {
     min-width: 600px;
   }
