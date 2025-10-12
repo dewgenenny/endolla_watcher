@@ -82,6 +82,17 @@
           <p class="muted utilization-panel-note">
             Locations ordered by occupied time during the telemetry window.
           </p>
+          <div class="utilization-controls">
+            <label class="utilization-limit" for="locations-limit">
+              Show
+              <select id="locations-limit" data-utilization-limit="locations">
+                <option value="10">Top 10</option>
+                <option value="25">Top 25</option>
+                <option value="100">Top 100</option>
+              </select>
+              results
+            </label>
+          </div>
           <div class="table-scroll">
             <table aria-describedby="utilization-note">
               <thead>
@@ -100,6 +111,12 @@
               <tbody id="utilization-locations-body"></tbody>
             </table>
           </div>
+          <div
+            class="utilization-footer"
+            data-utilization-footer="locations"
+            aria-live="polite"
+            hidden
+          ></div>
         </section>
         <section
           id="utilization-panel-stations"
@@ -112,6 +129,17 @@
           <p class="muted utilization-panel-note">
             Station utilization aggregates all ports at the given location and station.
           </p>
+          <div class="utilization-controls">
+            <label class="utilization-limit" for="stations-limit">
+              Show
+              <select id="stations-limit" data-utilization-limit="stations">
+                <option value="10">Top 10</option>
+                <option value="25">Top 25</option>
+                <option value="100">Top 100</option>
+              </select>
+              results
+            </label>
+          </div>
           <div class="table-scroll">
             <table aria-describedby="utilization-note">
               <thead>
@@ -125,6 +153,12 @@
               <tbody id="utilization-stations-body"></tbody>
             </table>
           </div>
+          <div
+            class="utilization-footer"
+            data-utilization-footer="stations"
+            aria-live="polite"
+            hidden
+          ></div>
         </section>
         <section
           id="utilization-panel-ports"
@@ -137,6 +171,17 @@
           <p class="muted utilization-panel-note">
             Individual port utilization highlights the busiest sockets in the network.
           </p>
+          <div class="utilization-controls">
+            <label class="utilization-limit" for="ports-limit">
+              Show
+              <select id="ports-limit" data-utilization-limit="ports">
+                <option value="10">Top 10</option>
+                <option value="25">Top 25</option>
+                <option value="100">Top 100</option>
+              </select>
+              results
+            </label>
+          </div>
           <div class="table-scroll">
             <table aria-describedby="utilization-note">
               <thead>
@@ -150,6 +195,12 @@
               <tbody id="utilization-ports-body"></tbody>
             </table>
           </div>
+          <div
+            class="utilization-footer"
+            data-utilization-footer="ports"
+            aria-live="polite"
+            hidden
+          ></div>
         </section>
       </div>
     </section>
