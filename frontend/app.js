@@ -79,6 +79,48 @@ let heatmapResizeObserver;
 let heatmapResizeHandle;
 let heatmapPendingBounds;
 
+const debugFlags = (() => {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const flags = new Set();
+    params.getAll('debug').forEach((value) => {
+      value
+        .split(',')
+        .map((flag) => flag.trim().toLowerCase())
+        .filter(Boolean)
+        .forEach((flag) => flags.add(flag));
+    });
+    if (params.has('debugMap')) {
+      flags.add('map');
+    }
+    return flags;
+  } catch (error) {
+    console.warn('Failed to parse debug query parameters', error);
+    return new Set();
+  }
+})();
+
+const isDebugEnabled = (flag) => debugFlags.has('all') || debugFlags.has(flag);
+
+const debugLog = (flag, message, detail) => {
+  if (!isDebugEnabled(flag)) {
+    return;
+  }
+  if (detail !== undefined) {
+    console.debug(`[debug:${flag}] ${message}`, detail);
+  } else {
+    console.debug(`[debug:${flag}] ${message}`);
+  }
+};
+
+const runInNextFrame = (callback) => {
+  if (typeof requestAnimationFrame === 'function') {
+    requestAnimationFrame(callback);
+  } else {
+    setTimeout(callback, 0);
+  }
+};
+
 const UTILIZATION_VIEW_IDS = ['locations', 'stations', 'ports'];
 const UTILIZATION_PAGE_SIZES = [10, 25, 100];
 const UTILIZATION_DEFAULT_PAGE_SIZE = UTILIZATION_PAGE_SIZES[0];
@@ -2191,6 +2233,7 @@ const applyPendingLocationMarker = () => {
   }
   const { lat, lon } = locationMapPendingCoords;
   if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+    debugLog('map', 'Discarding pending marker update because coordinates are invalid', locationMapPendingCoords);
     return;
   }
   const maplibregl = window.maplibregl;
@@ -2214,6 +2257,17 @@ const applyPendingLocationMarker = () => {
     markerElement.append(markerLabel, markerDot);
     locationMapMarkerElement = markerElement;
   }
+  const debugEnabled = isDebugEnabled('map');
+  locationMapMarkerElement.classList.toggle('location-map-marker--debug', debugEnabled);
+  const markerLabelEl = locationMapMarkerElement.querySelector('.location-map-marker__label');
+  if (markerLabelEl) {
+    markerLabelEl.classList.toggle('location-map-marker__label--debug', debugEnabled);
+  }
+  const markerDotEl = locationMapMarkerElement.querySelector('.location-map-marker__dot');
+  if (markerDotEl) {
+    markerDotEl.classList.toggle('location-map-marker__dot--debug', debugEnabled);
+  }
+
   locationMapMarker = new maplibregl.Marker({ element: locationMapMarkerElement, anchor: 'bottom' })
     .setLngLat([lon, lat])
     .addTo(locationMap);
@@ -2222,6 +2276,31 @@ const applyPendingLocationMarker = () => {
   locationMapPendingCoords = null;
   if (locationMapNoteEl) {
     locationMapNoteEl.textContent = 'Map data © OpenStreetMap contributors, © CARTO.';
+  }
+  if (debugEnabled) {
+    runInNextFrame(() => {
+      if (!locationMapMarkerElement) {
+        return;
+      }
+      const rect = locationMapMarkerElement.getBoundingClientRect();
+      const computedStyle = window.getComputedStyle(locationMapMarkerElement);
+      debugLog('map', 'Location map marker rendered', {
+        lat,
+        lon,
+        rect: {
+          width: rect.width,
+          height: rect.height,
+          top: rect.top,
+          left: rect.left,
+        },
+        computedStyle: {
+          display: computedStyle.display,
+          visibility: computedStyle.visibility,
+          opacity: computedStyle.opacity,
+          zIndex: computedStyle.zIndex,
+        },
+      });
+    });
   }
 };
 
@@ -2232,8 +2311,37 @@ const updateLocationMap = (coords) => {
   const lat = Number(coords?.lat);
   const lon = Number(coords?.lon);
   const hasCoords = Number.isFinite(lat) && Number.isFinite(lon);
+  const mapDebugEnabled = isDebugEnabled('map');
+
+  locationMapContainer.classList.toggle('location-map--debug', mapDebugEnabled);
+  if (mapDebugEnabled) {
+    runInNextFrame(() => {
+      const rect = locationMapContainer.getBoundingClientRect();
+      const computedStyle = window.getComputedStyle(locationMapContainer);
+      debugLog('map', 'Location map container state', {
+        hasCoords,
+        lat,
+        lon,
+        rect: {
+          width: rect.width,
+          height: rect.height,
+          top: rect.top,
+          left: rect.left,
+        },
+        computedStyle: {
+          display: computedStyle.display,
+          visibility: computedStyle.visibility,
+          opacity: computedStyle.opacity,
+          position: computedStyle.position,
+          zIndex: computedStyle.zIndex,
+          overflow: computedStyle.overflow,
+        },
+      });
+    });
+  }
 
   if (!hasCoords) {
+    debugLog('map', 'Skipping location map initialisation because coordinates are unavailable', coords);
     if (locationMap) {
       if (locationMapResizeHandle) {
         window.removeEventListener('resize', locationMapResizeHandle);
@@ -2259,6 +2367,7 @@ const updateLocationMap = (coords) => {
   }
 
   if (!isMapLibreAvailable()) {
+    debugLog('map', 'MapLibre GL JS is not available, cannot initialise location map');
     detachLocationMapResizeObserver();
     clearLocationMapResizeTimer();
     locationMapResizeRepeatCount = 0;
@@ -2314,6 +2423,7 @@ const updateLocationMap = (coords) => {
   }
 
   locationMapPendingCoords = { lat, lon };
+  debugLog('map', 'Queued location map marker update', { lat, lon });
   applyPendingLocationMarker();
 };
 
