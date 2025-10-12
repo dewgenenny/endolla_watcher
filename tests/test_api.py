@@ -85,6 +85,34 @@ def test_dashboard_endpoint(tmp_path, monkeypatch, auto_fetch, db_url):
         assert payload["last_fetch"] is None
 
 
+@pytest.mark.parametrize("auto_fetch", ["0"])
+def test_location_details_endpoint(tmp_path, monkeypatch, auto_fetch, db_url):
+    locations = tmp_path / "locations.json"
+    locations.write_text(
+        json.dumps({"locations": [{"id": "L1", "latitude": 41.0, "longitude": 2.0}]}),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setenv("ENDOLLA_DB_URL", db_url)
+    monkeypatch.setenv("ENDOLLA_AUTO_FETCH", auto_fetch)
+    monkeypatch.setenv("ENDOLLA_LOCATIONS_FILE", str(locations))
+
+    _seed_database(db_url)
+
+    module = importlib.import_module("endolla_watcher.api")
+    api = importlib.reload(module)
+
+    with TestClient(api.app) as client:
+        response = client.get("/api/locations/L1")
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["location_id"] == "L1"
+        assert payload["coordinates"]["lat"] == 41.0
+        assert payload["summary"]["week"]["availability_ratio"] >= 0
+        assert len(payload["usage_day"]["timeline"]) == 24
+        assert len(payload["usage_week"]["timeline"]) == 7
+
+
 def test_dashboard_cache(monkeypatch, tmp_path, db_url):
     locations = tmp_path / "locations.json"
     locations.write_text(

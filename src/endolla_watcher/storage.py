@@ -384,6 +384,32 @@ def _recent_status_history(
     return history
 
 
+def _recent_location_history(
+    conn: Connection,
+    location_id: str | None,
+    since: datetime,
+    until: datetime | None = None,
+) -> Dict[Tuple[str | None, str | None], List[Tuple[datetime, str]]]:
+    params: List[Any] = [location_id, since.isoformat()]
+    query = [
+        "SELECT station_id, port_id, ts, status",
+        "FROM port_status",
+        "WHERE location_id <=> %s AND ts >= %s",
+    ]
+    if until is not None:
+        query.append("AND ts <= %s")
+        params.append(until.isoformat())
+    query.append("ORDER BY station_id, port_id, ts")
+    sql = " ".join(query)
+    history: Dict[Tuple[str | None, str | None], List[Tuple[datetime, str]]] = {}
+    with _with_cursor(conn) as cur:
+        cur.execute(sql, params)
+        for station_id, port_id, ts_str, status in cur.fetchall():
+            key = (station_id, port_id)
+            history.setdefault(key, []).append((datetime.fromisoformat(ts_str), status))
+    return history
+
+
 def recent_sessions(conn: Connection, since: datetime) -> Dict[PortKey, List[float]]:
     history = _recent_status_history(conn, since)
     return {k: _session_durations(v) for k, v in history.items()}
@@ -678,6 +704,69 @@ def _compute_port_utilization(
     }
 
 
+def _compute_port_usage_between(
+    events: List[Tuple[datetime, str]],
+    start: datetime,
+    end: datetime,
+) -> Dict[str, float] | None:
+    if not events or end <= start:
+        return None
+    intervals = _status_intervals(events, end=end)
+    total_seconds = 0.0
+    available_seconds = 0.0
+    occupied_seconds = 0.0
+    active_seconds = 0.0
+    for interval_start, interval_end, status in intervals:
+        if interval_end <= start or interval_start >= end:
+            continue
+        seg_start = max(interval_start, start)
+        seg_end = min(interval_end, end)
+        if seg_end <= seg_start:
+            continue
+        duration = (seg_end - seg_start).total_seconds()
+        if duration <= 0:
+            continue
+        total_seconds += duration
+        if status is not None and status not in UNAVAILABLE_STATUSES:
+            available_seconds += duration
+        if status in OCCUPIED_STATUSES:
+            occupied_seconds += duration
+        if status in ACTIVE_CHARGING_STATUSES:
+            active_seconds += duration
+    if total_seconds <= 0:
+        return None
+
+    ordered = sorted(events, key=lambda item: item[0])
+    in_session = False
+    session_count = 0
+    for ts, status in ordered:
+        if ts < start:
+            if status == "IN_USE":
+                in_session = True
+            elif in_session and status != "IN_USE":
+                session_count += 1
+                in_session = False
+            continue
+        if status == "IN_USE":
+            if not in_session:
+                in_session = True
+        else:
+            if in_session:
+                session_count += 1
+                in_session = False
+    if in_session:
+        session_count += 1
+
+    return {
+        "sessions": float(session_count),
+        "monitored_seconds": total_seconds,
+        "available_seconds": available_seconds,
+        "occupied_seconds": occupied_seconds,
+        "active_seconds": active_seconds,
+        "port_count": 1.0,
+    }
+
+
 def _format_utilization_metrics(totals: Dict[str, float]) -> Dict[str, float]:
     monitored_seconds = totals.get("monitored_seconds", 0.0)
     available_seconds = totals.get("available_seconds", 0.0)
@@ -803,6 +892,111 @@ def _utilization_summary(
         "stations": station_rows,
         "locations": location_rows,
         "network": network_metrics,
+    }
+
+
+def _location_usage_timeline(
+    history: Dict[Tuple[str | None, str | None], List[Tuple[datetime, str]]],
+    start: datetime,
+    end: datetime,
+    step: timedelta,
+) -> List[Dict[str, Any]]:
+    timeline: List[Dict[str, Any]] = []
+    current = start
+    while current < end:
+        bucket_end = min(current + step, end)
+        bucket_totals = _empty_totals()
+        for events in history.values():
+            totals = _compute_port_usage_between(events, current, bucket_end)
+            if totals is None:
+                continue
+            _accumulate_totals(bucket_totals, totals)
+        entry: Dict[str, Any] = {
+            "start": current.isoformat(),
+            "end": bucket_end.isoformat(),
+            "port_count": int(bucket_totals.get("port_count", 0)),
+            "monitored_seconds": bucket_totals.get("monitored_seconds", 0.0),
+            "available_seconds": bucket_totals.get("available_seconds", 0.0),
+            "occupied_seconds": bucket_totals.get("occupied_seconds", 0.0),
+            "active_seconds": bucket_totals.get("active_seconds", 0.0),
+            "sessions": bucket_totals.get("sessions", 0.0),
+        }
+        if bucket_totals.get("monitored_seconds", 0.0) > 0:
+            entry.update(_format_utilization_metrics(bucket_totals))
+        else:
+            entry.update(
+                {
+                    "monitored_hours": 0.0,
+                    "monitored_days": 0.0,
+                    "session_count_per_day": 0.0,
+                    "session_count_per_hour": 0.0,
+                    "occupation_utilization_pct": 0.0,
+                    "active_charging_utilization_pct": 0.0,
+                    "availability_ratio": 0.0,
+                }
+            )
+        timeline.append(entry)
+        current = bucket_end
+    return timeline
+
+
+def location_usage(
+    conn: Connection,
+    location_id: str | None,
+    *,
+    now: datetime | None = None,
+) -> Dict[str, Any] | None:
+    if now is None:
+        now = datetime.now().astimezone()
+    lookback_start = now - timedelta(days=8)
+    history = _recent_location_history(conn, location_id, lookback_start, now)
+    if not history:
+        return None
+
+    day_start = now - timedelta(hours=24)
+    week_start = now - timedelta(days=7)
+
+    day_totals = _empty_totals()
+    week_totals = _empty_totals()
+    station_ids: set[str | None] = set()
+    port_ids: set[Tuple[str | None, str | None]] = set()
+
+    for (station_id, port_id), events in history.items():
+        port_ids.add((station_id, port_id))
+        station_ids.add(station_id)
+        week_metrics = _compute_port_usage_between(events, week_start, now)
+        if week_metrics is not None:
+            _accumulate_totals(week_totals, week_metrics)
+        day_metrics = _compute_port_usage_between(events, day_start, now)
+        if day_metrics is not None:
+            _accumulate_totals(day_totals, day_metrics)
+
+    day_timeline = _location_usage_timeline(history, day_start, now, timedelta(hours=1))
+    week_timeline = _location_usage_timeline(history, week_start, now, timedelta(days=1))
+
+    summary = {
+        "day": _format_utilization_metrics(day_totals),
+        "week": _format_utilization_metrics(week_totals),
+    }
+
+    return {
+        "location_id": location_id,
+        "station_count": len({sid for sid in station_ids if sid is not None}),
+        "port_count": len(port_ids),
+        "summary": summary,
+        "usage_day": {
+            "start": day_start.isoformat(),
+            "end": now.isoformat(),
+            "bucket_minutes": 60,
+            "timeline": day_timeline,
+        },
+        "usage_week": {
+            "start": week_start.isoformat(),
+            "end": now.isoformat(),
+            "bucket_days": 1,
+            "timeline": week_timeline,
+        },
+        "updated": now.isoformat(),
     }
 
 

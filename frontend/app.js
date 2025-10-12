@@ -18,14 +18,39 @@ const utilizationTabButtons = utilizationTabsRoot
   : [];
 const utilizationPanels = document.querySelectorAll('[data-utilization-panel]');
 const utilizationLocationsBody = document.getElementById('utilization-locations-body');
+const utilizationStationsBody = document.getElementById('utilization-stations-body');
+const utilizationPortsBody = document.getElementById('utilization-ports-body');
 const utilizationSortButton = document.getElementById('utilization-sort');
 const utilizationRateHeader = document.getElementById('utilization-rate-header');
+const locationDetailRoot = document.getElementById('location-detail');
+const locationLoadingEl = document.getElementById('location-loading');
+const locationErrorEl = document.getElementById('location-error');
+const locationTitleEl = document.getElementById('location-title');
+const locationUpdatedEl = document.getElementById('location-updated');
+const locationStationsEl = document.getElementById('location-stations');
+const locationPortsEl = document.getElementById('location-ports');
+const locationOccupationDayEl = document.getElementById('location-occupation-day');
+const locationActiveDayEl = document.getElementById('location-active-day');
+const locationAvailabilityEl = document.getElementById('location-availability');
+const locationMonitoredEl = document.getElementById('location-monitored');
+const locationMapContainer = document.getElementById('location-map');
+const locationMapNoteEl = document.getElementById('location-map-note');
+const locationDayChartCanvas = document.getElementById('location-usage-day');
+const locationWeekChartCanvas = document.getElementById('location-usage-week');
+const locationDayChartStatus = document.getElementById('location-usage-day-status');
+const locationWeekChartStatus = document.getElementById('location-usage-week-status');
 
 let chargesChart;
 let dashboardController;
 let activeUtilizationTabId = null;
 let utilizationLocationRows = null;
+let utilizationStationRows = null;
+let utilizationPortRows = null;
 let utilizationSortDescending = true;
+let locationDayChart;
+let locationWeekChart;
+let locationMap;
+let locationMapMarker;
 
 const chargesGlowPlugin = {
   id: 'chargesGlow',
@@ -199,6 +224,7 @@ const setActiveUtilizationTab = (targetId) => {
   utilizationPanels.forEach((panel) => {
     const isActive = panel.dataset.utilizationPanel === targetId;
     panel.hidden = !isActive;
+    panel.setAttribute('aria-hidden', isActive ? 'false' : 'true');
     panel.classList.toggle('is-active', isActive);
   });
 };
@@ -226,29 +252,32 @@ const getLocationUtilizationValue = (row) => {
   return Number.isFinite(value) ? value : Number.NaN;
 };
 
+const renderTableMessage = (body, message, colSpan = 4) => {
+  if (!body) {
+    return;
+  }
+  const tr = document.createElement('tr');
+  const td = document.createElement('td');
+  td.colSpan = colSpan;
+  td.textContent = message;
+  td.classList.add('muted');
+  tr.appendChild(td);
+  body.appendChild(tr);
+};
+
 const renderUtilizationLocationRows = () => {
   if (!utilizationLocationsBody) {
     return;
   }
   utilizationLocationsBody.innerHTML = '';
 
-  const appendMessage = (message) => {
-    const tr = document.createElement('tr');
-    const td = document.createElement('td');
-    td.colSpan = 4;
-    td.textContent = message;
-    td.classList.add('muted');
-    tr.appendChild(td);
-    utilizationLocationsBody.appendChild(tr);
-  };
-
   if (utilizationLocationRows === null) {
-    appendMessage('Loading location utilization…');
+    renderTableMessage(utilizationLocationsBody, 'Loading location utilization…');
     return;
   }
 
   if (!Array.isArray(utilizationLocationRows) || utilizationLocationRows.length === 0) {
-    appendMessage('Location utilization data unavailable.');
+    renderTableMessage(utilizationLocationsBody, 'Location utilization data unavailable.');
     return;
   }
 
@@ -272,8 +301,15 @@ const renderUtilizationLocationRows = () => {
     const hasLocationId =
       row && row.location_id !== null && row.location_id !== undefined && row.location_id !== '';
     const locationCell = document.createElement('td');
-    locationCell.textContent = hasLocationId ? String(row.location_id) : 'Unknown';
-    if (!hasLocationId) {
+    if (hasLocationId) {
+      const link = document.createElement('a');
+      link.href = `location.html?id=${encodeURIComponent(String(row.location_id))}`;
+      link.className = 'table-link';
+      link.textContent = String(row.location_id);
+      link.title = `View detailed insights for location ${row.location_id}`;
+      locationCell.appendChild(link);
+    } else {
+      locationCell.textContent = 'Unknown';
       locationCell.classList.add('muted');
     }
     tr.appendChild(locationCell);
@@ -297,22 +333,160 @@ const renderUtilizationLocationRows = () => {
   });
 };
 
-const refreshUtilizationLocationTable = () => {
-  updateUtilizationSortIndicators();
-  renderUtilizationLocationRows();
+const renderUtilizationStationRows = () => {
+  if (!utilizationStationsBody) {
+    return;
+  }
+  utilizationStationsBody.innerHTML = '';
+
+  if (utilizationStationRows === null) {
+    renderTableMessage(utilizationStationsBody, 'Loading station utilization…');
+    return;
+  }
+
+  if (!Array.isArray(utilizationStationRows) || utilizationStationRows.length === 0) {
+    renderTableMessage(utilizationStationsBody, 'Station utilization data unavailable.');
+    return;
+  }
+
+  utilizationStationRows.forEach((row) => {
+    const tr = document.createElement('tr');
+
+    const locationCell = document.createElement('td');
+    if (row?.location_id) {
+      const link = document.createElement('a');
+      link.href = `location.html?id=${encodeURIComponent(String(row.location_id))}`;
+      link.className = 'table-link';
+      link.textContent = String(row.location_id);
+      link.title = `View detailed insights for location ${row.location_id}`;
+      locationCell.appendChild(link);
+    } else {
+      locationCell.textContent = 'Unknown';
+      locationCell.classList.add('muted');
+    }
+    tr.appendChild(locationCell);
+
+    const stationCell = document.createElement('td');
+    if (row?.station_id) {
+      stationCell.textContent = String(row.station_id);
+    } else {
+      stationCell.textContent = 'Unknown';
+      stationCell.classList.add('muted');
+    }
+    tr.appendChild(stationCell);
+
+    const portCell = document.createElement('td');
+    portCell.textContent = formatNumber(row?.port_count);
+    tr.appendChild(portCell);
+
+    const utilizationCell = document.createElement('td');
+    const utilizationValue = Number(row?.occupation_utilization_pct);
+    utilizationCell.textContent = Number.isFinite(utilizationValue)
+      ? formatPercent(utilizationValue, 1)
+      : '–';
+    tr.appendChild(utilizationCell);
+
+    utilizationStationsBody.appendChild(tr);
+  });
 };
 
-const setUtilizationLocationRows = (rows) => {
-  if (Array.isArray(rows)) {
-    utilizationLocationRows = rows.slice();
+const renderUtilizationPortRows = () => {
+  if (!utilizationPortsBody) {
+    return;
+  }
+  utilizationPortsBody.innerHTML = '';
+
+  if (utilizationPortRows === null) {
+    renderTableMessage(utilizationPortsBody, 'Loading port utilization…');
+    return;
+  }
+
+  if (!Array.isArray(utilizationPortRows) || utilizationPortRows.length === 0) {
+    renderTableMessage(utilizationPortsBody, 'Port utilization data unavailable.');
+    return;
+  }
+
+  utilizationPortRows.forEach((row) => {
+    const tr = document.createElement('tr');
+
+    const locationCell = document.createElement('td');
+    if (row?.location_id) {
+      const link = document.createElement('a');
+      link.href = `location.html?id=${encodeURIComponent(String(row.location_id))}`;
+      link.className = 'table-link';
+      link.textContent = String(row.location_id);
+      link.title = `View detailed insights for location ${row.location_id}`;
+      locationCell.appendChild(link);
+    } else {
+      locationCell.textContent = 'Unknown';
+      locationCell.classList.add('muted');
+    }
+    tr.appendChild(locationCell);
+
+    const stationCell = document.createElement('td');
+    if (row?.station_id) {
+      stationCell.textContent = String(row.station_id);
+    } else {
+      stationCell.textContent = 'Unknown';
+      stationCell.classList.add('muted');
+    }
+    tr.appendChild(stationCell);
+
+    const portCell = document.createElement('td');
+    if (row?.port_id) {
+      portCell.textContent = String(row.port_id);
+    } else {
+      portCell.textContent = 'Unknown';
+      portCell.classList.add('muted');
+    }
+    tr.appendChild(portCell);
+
+    const utilizationCell = document.createElement('td');
+    const utilizationValue = Number(row?.occupation_utilization_pct);
+    utilizationCell.textContent = Number.isFinite(utilizationValue)
+      ? formatPercent(utilizationValue, 1)
+      : '–';
+    tr.appendChild(utilizationCell);
+
+    utilizationPortsBody.appendChild(tr);
+  });
+};
+
+const refreshUtilizationTables = () => {
+  updateUtilizationSortIndicators();
+  renderUtilizationLocationRows();
+  renderUtilizationStationRows();
+  renderUtilizationPortRows();
+};
+
+const setUtilizationData = (locations, stations, ports) => {
+  if (Array.isArray(locations)) {
+    utilizationLocationRows = locations.slice();
     utilizationSortDescending = true;
-  } else if (rows === null) {
+  } else if (locations === null) {
     utilizationLocationRows = null;
   } else {
     utilizationLocationRows = [];
     utilizationSortDescending = true;
   }
-  refreshUtilizationLocationTable();
+
+  if (Array.isArray(stations)) {
+    utilizationStationRows = stations.slice();
+  } else if (stations === null) {
+    utilizationStationRows = null;
+  } else {
+    utilizationStationRows = [];
+  }
+
+  if (Array.isArray(ports)) {
+    utilizationPortRows = ports.slice();
+  } else if (ports === null) {
+    utilizationPortRows = null;
+  } else {
+    utilizationPortRows = [];
+  }
+
+  refreshUtilizationTables();
 };
 
 const formatPeriodRange = (startIso, endIso, granularity) => {
@@ -467,7 +641,11 @@ const updateUtilization = (utilization) => {
     }
   });
 
-  setUtilizationLocationRows(Array.isArray(utilization?.locations) ? utilization.locations : []);
+  setUtilizationData(
+    Array.isArray(utilization?.locations) ? utilization.locations : [],
+    Array.isArray(utilization?.stations) ? utilization.stations : [],
+    Array.isArray(utilization?.ports) ? utilization.ports : [],
+  );
 
   if (noteEl) {
     const monitoredDays = Number(metrics.monitored_days);
@@ -790,7 +968,367 @@ const showError = (error) => {
   if (meta) {
     meta.textContent = 'Backend unavailable';
   }
-  setUtilizationLocationRows([]);
+  setUtilizationData([], [], []);
+};
+
+const setLocationLoading = (message) => {
+  if (!locationLoadingEl) {
+    return;
+  }
+  if (message) {
+    locationLoadingEl.textContent = message;
+    locationLoadingEl.hidden = false;
+  } else {
+    locationLoadingEl.hidden = true;
+  }
+};
+
+const setLocationError = (message) => {
+  if (!locationErrorEl) {
+    return;
+  }
+  if (message) {
+    locationErrorEl.textContent = message;
+    locationErrorEl.hidden = false;
+  } else {
+    locationErrorEl.hidden = true;
+  }
+};
+
+const renderLocationUsageChart = (chart, canvas, statusEl, timeline, granularity) => {
+  if (!canvas) {
+    if (statusEl) {
+      statusEl.hidden = true;
+    }
+    return chart;
+  }
+
+  if (!window.Chart) {
+    if (statusEl) {
+      statusEl.textContent = 'Chart library failed to load.';
+      statusEl.hidden = false;
+    }
+    return chart;
+  }
+
+  const points = (timeline || [])
+    .map((entry) => {
+      if (!entry?.start) {
+        return null;
+      }
+      const occupancy = Number(entry.occupation_utilization_pct);
+      if (!Number.isFinite(occupancy)) {
+        return null;
+      }
+      const label =
+        granularity === 'hour'
+          ? formatDateTime(entry.start, { includeWeekday: false })
+          : formatDate(entry.start, { includeWeekday: true });
+      return {
+        start: entry.start,
+        end: entry.end,
+        value: occupancy,
+        availability: Number(entry.availability_ratio ?? Number.NaN),
+        label,
+      };
+    })
+    .filter(Boolean);
+
+  if (points.length === 0) {
+    if (chart) {
+      chart.destroy();
+    }
+    if (statusEl) {
+      const hasTimeline = Array.isArray(timeline) && timeline.length > 0;
+      statusEl.textContent = hasTimeline
+        ? 'No usage recorded for this period yet.'
+        : 'Usage timeline unavailable.';
+      statusEl.hidden = false;
+    }
+    return undefined;
+  }
+
+  if (statusEl) {
+    statusEl.hidden = true;
+  }
+
+  const labels = points.map((point) => point.label);
+  const values = points.map((point) => point.value);
+  const style = granularity === 'hour'
+    ? { tension: 0.35, pointRadius: 0, pointHoverRadius: 4 }
+    : { tension: 0.4, pointRadius: 3, pointHoverRadius: 6 };
+
+  if (chart) {
+    chart.data.labels = labels;
+    chart.data.datasets[0].data = values;
+    chart.options.scales.y.max = 100;
+    const tickOptions = chart.options.scales?.x?.ticks;
+    if (tickOptions) {
+      tickOptions.maxTicksLimit = granularity === 'hour' ? 12 : undefined;
+    }
+    chart.update();
+    chart.$points = points;
+    chart.$granularity = granularity;
+    return chart;
+  }
+
+  const context = canvas.getContext('2d');
+  const newChart = new window.Chart(context, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'Occupied',
+          data: values,
+          borderColor: '#0ea5e9',
+          borderWidth: 2,
+          tension: style.tension,
+          fill: 'origin',
+          backgroundColor(ctx) {
+            const { chart: chartCtx } = ctx;
+            const { ctx: canvasCtx, chartArea } = chartCtx;
+            if (!chartArea) {
+              return null;
+            }
+            const gradient = canvasCtx.createLinearGradient(0, chartArea.bottom, 0, chartArea.top);
+            gradient.addColorStop(0, 'rgba(14, 165, 233, 0)');
+            gradient.addColorStop(1, 'rgba(14, 165, 233, 0.35)');
+            return gradient;
+          },
+          pointBackgroundColor: '#38bdf8',
+          pointBorderWidth: 0,
+          pointRadius: style.pointRadius,
+          pointHoverRadius: style.pointHoverRadius,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: false,
+        tooltip: {
+          backgroundColor: '#0f172a',
+          titleColor: '#f8fafc',
+          bodyColor: '#e2e8f0',
+          displayColors: false,
+          callbacks: {
+            title(items) {
+              if (!items?.length) {
+                return '';
+              }
+              const index = items[0].dataIndex;
+              return points[index]?.label ?? '';
+            },
+            label(item) {
+              const occupied = formatDecimal(item.parsed.y, {
+                minimumFractionDigits: 1,
+                maximumFractionDigits: 1,
+              });
+              return `${occupied}% occupied`;
+            },
+          },
+        },
+      },
+      scales: {
+        x: {
+          grid: {
+            display: false,
+          },
+          ticks: {
+            color: '#475569',
+            maxRotation: 0,
+            autoSkip: true,
+            maxTicksLimit: granularity === 'hour' ? 12 : undefined,
+          },
+        },
+        y: {
+          beginAtZero: true,
+          max: 100,
+          grid: {
+            color: 'rgba(148, 163, 184, 0.2)',
+            drawTicks: false,
+          },
+          ticks: {
+            color: '#475569',
+            padding: 8,
+            callback(value) {
+              return `${value}%`;
+            },
+          },
+        },
+      },
+    },
+  });
+  newChart.$points = points;
+  newChart.$granularity = granularity;
+  return newChart;
+};
+
+const updateLocationMap = (coords) => {
+  if (!locationMapContainer) {
+    return;
+  }
+  const lat = Number(coords?.lat);
+  const lon = Number(coords?.lon);
+  const hasCoords = Number.isFinite(lat) && Number.isFinite(lon);
+
+  if (!hasCoords) {
+    if (locationMap) {
+      locationMap.remove();
+      locationMap = undefined;
+      locationMapMarker = undefined;
+    }
+    locationMapContainer.innerHTML = '';
+    if (locationMapNoteEl) {
+      locationMapNoteEl.textContent = 'No coordinates available for this location.';
+    }
+    return;
+  }
+
+  if (typeof window.L === 'undefined') {
+    if (locationMapNoteEl) {
+      locationMapNoteEl.textContent = 'Map library failed to load.';
+    }
+    return;
+  }
+
+  if (!locationMap) {
+    locationMap = window.L.map(locationMapContainer, { attributionControl: false });
+    window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '© OpenStreetMap contributors',
+    }).addTo(locationMap);
+  }
+
+  if (locationMapMarker) {
+    locationMap.removeLayer(locationMapMarker);
+  }
+  locationMapMarker = window.L.marker([lat, lon]).addTo(locationMap);
+  locationMap.setView([lat, lon], 16);
+
+  if (locationMapNoteEl) {
+    locationMapNoteEl.textContent = 'Map data © OpenStreetMap contributors.';
+  }
+};
+
+const populateLocationDetail = (locationId, details) => {
+  if (locationTitleEl) {
+    locationTitleEl.textContent = `Location ${locationId}`;
+  }
+  document.title = `Location ${locationId} – Endolla Watcher`;
+
+  const updatedIso = details?.updated;
+  if (locationUpdatedEl) {
+    if (updatedIso) {
+      const updatedDate = new Date(updatedIso);
+      if (!Number.isNaN(updatedDate)) {
+        locationUpdatedEl.textContent = `Telemetry refreshed ${updatedDate.toLocaleString()}`;
+      } else {
+        locationUpdatedEl.textContent = '';
+      }
+    } else {
+      locationUpdatedEl.textContent = '';
+    }
+  }
+
+  if (locationStationsEl) {
+    locationStationsEl.textContent = formatNumber(details?.station_count);
+  }
+  if (locationPortsEl) {
+    locationPortsEl.textContent = formatNumber(details?.port_count);
+  }
+
+  const daySummary = details?.summary?.day ?? {};
+  const weekSummary = details?.summary?.week ?? {};
+
+  if (locationOccupationDayEl) {
+    locationOccupationDayEl.textContent = formatPercent(daySummary.occupation_utilization_pct, 1);
+  }
+  if (locationActiveDayEl) {
+    locationActiveDayEl.textContent = formatPercent(daySummary.active_charging_utilization_pct, 1);
+  }
+  if (locationAvailabilityEl) {
+    locationAvailabilityEl.textContent = formatRatioPercent(weekSummary.availability_ratio, 1);
+  }
+  if (locationMonitoredEl) {
+    locationMonitoredEl.textContent = formatDecimal(weekSummary.monitored_days || 0, {
+      minimumFractionDigits: 1,
+      maximumFractionDigits: 1,
+    });
+  }
+
+  locationDayChart = renderLocationUsageChart(
+    locationDayChart,
+    locationDayChartCanvas,
+    locationDayChartStatus,
+    details?.usage_day?.timeline,
+    'hour',
+  );
+  locationWeekChart = renderLocationUsageChart(
+    locationWeekChart,
+    locationWeekChartCanvas,
+    locationWeekChartStatus,
+    details?.usage_week?.timeline,
+    'day',
+  );
+
+  updateLocationMap(details?.coordinates);
+};
+
+const fetchLocationDetails = async (locationId) => {
+  setLocationLoading('Fetching the latest telemetry…');
+  setLocationError(null);
+  if (locationDayChartStatus) {
+    locationDayChartStatus.textContent = 'Loading hourly usage…';
+    locationDayChartStatus.hidden = false;
+  }
+  if (locationWeekChartStatus) {
+    locationWeekChartStatus.textContent = 'Loading weekly usage…';
+    locationWeekChartStatus.hidden = false;
+  }
+
+  try {
+    const response = await fetch(`${API_BASE}/locations/${encodeURIComponent(locationId)}`);
+    if (!response.ok) {
+      if (response.status === 404) {
+        throw new Error('Location not found.');
+      }
+      throw new Error(`Backend returned ${response.status}`);
+    }
+    const payload = await response.json();
+    populateLocationDetail(locationId, payload);
+    setLocationLoading(null);
+  } catch (error) {
+    console.error(error);
+    if (locationDayChartStatus) {
+      locationDayChartStatus.textContent = 'Unable to load hourly usage.';
+      locationDayChartStatus.hidden = false;
+    }
+    if (locationWeekChartStatus) {
+      locationWeekChartStatus.textContent = 'Unable to load weekly usage.';
+      locationWeekChartStatus.hidden = false;
+    }
+    setLocationLoading(null);
+    setLocationError(error.message || 'Unable to load location details.');
+    updateLocationMap(null);
+  }
+};
+
+const initLocationDetailPage = () => {
+  if (!locationDetailRoot) {
+    return;
+  }
+  const params = new URLSearchParams(window.location.search);
+  const rawId = params.get('id') ?? params.get('location');
+  const locationId = rawId ? rawId.trim() : '';
+  if (!locationId) {
+    setLocationLoading(null);
+    setLocationError('No location specified.');
+    return;
+  }
+  fetchLocationDetails(locationId);
 };
 
 const loadDashboard = async (days = DEFAULT_DAYS) => {
@@ -804,7 +1342,7 @@ const loadDashboard = async (days = DEFAULT_DAYS) => {
   }
   const controller = new AbortController();
   dashboardController = controller;
-  setUtilizationLocationRows(null);
+  setUtilizationData(null, null, null);
   try {
     setChartStatus('Loading charging trend…');
     const params = new URLSearchParams({
@@ -849,7 +1387,7 @@ const loadDashboard = async (days = DEFAULT_DAYS) => {
   }
 };
 
-refreshUtilizationLocationTable();
+refreshUtilizationTables();
 
 if (utilizationTabsRoot && utilizationTabButtons.length > 0) {
   const initialTabButton =
@@ -904,9 +1442,11 @@ if (utilizationTabsRoot && utilizationTabButtons.length > 0) {
 if (utilizationSortButton) {
   utilizationSortButton.addEventListener('click', () => {
     utilizationSortDescending = !utilizationSortDescending;
-    refreshUtilizationLocationTable();
+    refreshUtilizationTables();
   });
 }
+
+initLocationDetailPage();
 
 if (chargesRangeControl) {
   const focusOption = (option) => {

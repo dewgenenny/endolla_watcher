@@ -31,26 +31,125 @@
           <p class="muted" id="utilization-note">Loading utilization metrics…</p>
         </div>
       </div>
-      <p class="muted utilization-panel-note">
-        Locations ordered by occupied time during the telemetry window.
-      </p>
-      <div class="table-scroll">
-        <table aria-describedby="utilization-note">
-          <thead>
-            <tr>
-              <th scope="col">Location</th>
-              <th scope="col">Stations</th>
-              <th scope="col">Ports</th>
-              <th scope="col" id="utilization-rate-header" aria-sort="descending">
-                <button type="button" id="utilization-sort" class="sort-button">
-                  <span class="sort-button-label">Utilization rate</span>
-                  <span class="sort-indicator" aria-hidden="true">High → Low</span>
-                </button>
-              </th>
-            </tr>
-          </thead>
-          <tbody id="utilization-locations-body"></tbody>
-        </table>
+      <div
+        id="utilization-tabs"
+        class="utilization-tabs"
+        role="tablist"
+        aria-label="Utilization breakdown"
+      >
+        <button
+          type="button"
+          class="utilization-tab is-active"
+          role="tab"
+          aria-selected="true"
+          aria-controls="utilization-panel-locations"
+          data-tab="locations"
+        >
+          Locations
+        </button>
+        <button
+          type="button"
+          class="utilization-tab"
+          role="tab"
+          aria-selected="false"
+          aria-controls="utilization-panel-stations"
+          data-tab="stations"
+          tabindex="-1"
+        >
+          Stations
+        </button>
+        <button
+          type="button"
+          class="utilization-tab"
+          role="tab"
+          aria-selected="false"
+          aria-controls="utilization-panel-ports"
+          data-tab="ports"
+          tabindex="-1"
+        >
+          Ports
+        </button>
+      </div>
+      <div class="utilization-panels">
+        <section
+          id="utilization-panel-locations"
+          class="utilization-panel is-active"
+          data-utilization-panel="locations"
+          role="tabpanel"
+          aria-labelledby="location-utilization-heading"
+        >
+          <p class="muted utilization-panel-note">
+            Locations ordered by occupied time during the telemetry window.
+          </p>
+          <div class="table-scroll">
+            <table aria-describedby="utilization-note">
+              <thead>
+                <tr>
+                  <th scope="col">Location</th>
+                  <th scope="col">Stations</th>
+                  <th scope="col">Ports</th>
+                  <th scope="col" id="utilization-rate-header" aria-sort="descending">
+                    <button type="button" id="utilization-sort" class="sort-button">
+                      <span class="sort-button-label">Utilization rate</span>
+                      <span class="sort-indicator" aria-hidden="true">High → Low</span>
+                    </button>
+                  </th>
+                </tr>
+              </thead>
+              <tbody id="utilization-locations-body"></tbody>
+            </table>
+          </div>
+        </section>
+        <section
+          id="utilization-panel-stations"
+          class="utilization-panel"
+          data-utilization-panel="stations"
+          role="tabpanel"
+          aria-labelledby="location-utilization-heading"
+          hidden
+        >
+          <p class="muted utilization-panel-note">
+            Station utilization aggregates all ports at the given location and station.
+          </p>
+          <div class="table-scroll">
+            <table aria-describedby="utilization-note">
+              <thead>
+                <tr>
+                  <th scope="col">Location</th>
+                  <th scope="col">Station</th>
+                  <th scope="col">Ports</th>
+                  <th scope="col">Utilization rate</th>
+                </tr>
+              </thead>
+              <tbody id="utilization-stations-body"></tbody>
+            </table>
+          </div>
+        </section>
+        <section
+          id="utilization-panel-ports"
+          class="utilization-panel"
+          data-utilization-panel="ports"
+          role="tabpanel"
+          aria-labelledby="location-utilization-heading"
+          hidden
+        >
+          <p class="muted utilization-panel-note">
+            Individual port utilization highlights the busiest sockets in the network.
+          </p>
+          <div class="table-scroll">
+            <table aria-describedby="utilization-note">
+              <thead>
+                <tr>
+                  <th scope="col">Location</th>
+                  <th scope="col">Station</th>
+                  <th scope="col">Port</th>
+                  <th scope="col">Utilization rate</th>
+                </tr>
+              </thead>
+              <tbody id="utilization-ports-body"></tbody>
+            </table>
+          </div>
+        </section>
       </div>
     </section>
   </main>
