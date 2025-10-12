@@ -725,6 +725,47 @@ main {
   color: var(--text-1);
 }
 
+.high-charging-list {
+  list-style: none;
+  display: grid;
+  gap: var(--space-2);
+  padding: 0;
+  margin: 0;
+}
+
+.high-charging-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  background: linear-gradient(180deg, var(--bg-elev-1), transparent);
+  border: 1px solid var(--stroke-1);
+}
+
+.high-charging-details {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.high-charging-details a {
+  color: var(--text-1);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.high-charging-details a:hover,
+.high-charging-details a:focus {
+  text-decoration: underline;
+}
+
+.high-charging-meta {
+  font-size: var(--font-size-0);
+  color: var(--text-2);
+}
+
 .history table,
 .problematic table,
 .utilization table,

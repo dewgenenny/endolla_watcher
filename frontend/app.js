@@ -39,6 +39,8 @@ const locationDayChartCanvas = document.getElementById('location-usage-day');
 const locationWeekChartCanvas = document.getElementById('location-usage-week');
 const locationDayChartStatus = document.getElementById('location-usage-day-status');
 const locationWeekChartStatus = document.getElementById('location-usage-week-status');
+const highChargingListEl = document.getElementById('high-charging-list');
+const highChargingNoteEl = document.getElementById('high-charging-note');
 
 let chargesChart;
 let dashboardController;
@@ -1140,6 +1142,91 @@ const updateChargesChart = (series, granularity = 'day') => {
   setChartStatus(null);
 };
 
+const updateHighChargingLocations = (locations) => {
+  if (!highChargingListEl || !highChargingNoteEl) {
+    return;
+  }
+
+  highChargingListEl.innerHTML = '';
+  highChargingListEl.hidden = false;
+  highChargingNoteEl.hidden = false;
+
+  if (!Array.isArray(locations)) {
+    highChargingNoteEl.textContent = 'Location utilization data unavailable.';
+    highChargingListEl.hidden = true;
+    return;
+  }
+
+  const highlighted = locations
+    .map((entry) => {
+      const percent =
+        typeof entry?.active_charging_utilization_pct === 'number'
+          ? entry.active_charging_utilization_pct
+          : Number(entry?.active_charging_utilization_pct);
+      const stationCount =
+        typeof entry?.station_count === 'number' ? entry.station_count : Number(entry?.station_count);
+      const portCount =
+        typeof entry?.port_count === 'number' ? entry.port_count : Number(entry?.port_count);
+      return {
+        id: entry?.location_id,
+        percent,
+        stationCount,
+        portCount,
+      };
+    })
+    .filter((entry) => entry.id && Number.isFinite(entry.percent) && entry.percent > 40)
+    .sort((a, b) => b.percent - a.percent);
+
+  if (highlighted.length === 0) {
+    highChargingNoteEl.textContent = 'No locations currently exceed the 40% charging rate threshold.';
+    highChargingListEl.hidden = true;
+    return;
+  }
+
+  highChargingNoteEl.textContent =
+    'These locations exceed 40% active charging utilization. Consider expanding capacity.';
+
+  highlighted.forEach((entry) => {
+    const item = document.createElement('li');
+    item.className = 'high-charging-item';
+
+    const details = document.createElement('div');
+    details.className = 'high-charging-details';
+
+    if (entry.id) {
+      const link = document.createElement('a');
+      link.href = `location.html?id=${encodeURIComponent(entry.id)}`;
+      link.textContent = entry.id;
+      link.setAttribute('aria-label', `View utilization details for location ${entry.id}`);
+      details.appendChild(link);
+    } else {
+      const fallback = document.createElement('span');
+      fallback.textContent = 'Unknown location';
+      details.appendChild(fallback);
+    }
+
+    const metaParts = [];
+    if (Number.isFinite(entry.stationCount) && entry.stationCount > 0) {
+      metaParts.push(`${formatNumber(entry.stationCount)} stations`);
+    }
+    if (Number.isFinite(entry.portCount) && entry.portCount > 0) {
+      metaParts.push(`${formatNumber(entry.portCount)} ports`);
+    }
+    if (metaParts.length > 0) {
+      const meta = document.createElement('span');
+      meta.className = 'high-charging-meta';
+      meta.textContent = metaParts.join(' · ');
+      details.appendChild(meta);
+    }
+
+    const value = document.createElement('strong');
+    value.textContent = formatPercent(entry.percent, 1);
+
+    item.append(details, value);
+    highChargingListEl.appendChild(item);
+  });
+};
+
 const updateProblematic = (problematic, locations) => {
   const tbody = document.getElementById('problematic-table');
   const countEl = document.getElementById('problematic-count');
@@ -1194,6 +1281,7 @@ const showError = (error) => {
     meta.textContent = 'Backend unavailable';
   }
   setUtilizationData([], [], []);
+  updateHighChargingLocations(null);
 };
 
 const setLocationLoading = (message) => {
@@ -1683,6 +1771,7 @@ const loadDashboard = async (days = DEFAULT_DAYS) => {
     }
     updateSummary(data.stats, data);
     updateUtilization(data.stats?.utilization);
+    updateHighChargingLocations(data.stats?.utilization?.locations);
     updateRules(data.rules, data.rule_counts);
     updateDaily(data.daily);
     const hasSeries = Array.isArray(data.series);
