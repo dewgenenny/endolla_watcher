@@ -1,0 +1,358 @@
+/*
+  2025 Feedback App – Auto‑switching CSS Theme
+  -------------------------------------------------
+  • Modern soft-neo-glass aesthetic with subtle depth
+  • Auto light/dark via prefers-color-scheme, with optional manual override using [data-theme]
+  • Variable fonts, fluid spacing, rounded geometry, micro-interactions
+  • Accessible focus states, reduced motion support, high-contrast tweaks
+
+  HOW TO OVERRIDE THEME MANUALLY (optional):
+    <html data-theme="light"> or <html data-theme="dark">
+
+  TIP: Include <meta name="color-scheme" content="light dark"> in <head> for form controls.
+*/
+
+/* -------------------------------
+   0) CSS Reset + Base
+---------------------------------- */
+
+*, *::before, *::after { box-sizing: border-box; }
+html, body { height: 100%; }
+body, h1, h2, h3, h4, h5, h6, p, figure, blockquote, dl, dd { margin: 0; }
+ul[role='list'], ol[role='list'] { list-style: none; }
+img, picture { max-width: 100%; display: block; }
+input, button, textarea, select { font: inherit; }
+
+:root {
+  /* Let UA know we support both schemes for builtin widgets */
+  color-scheme: light dark;
+
+  /* Type scale */
+  --font-sans: "InterVariable", system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+  --font-weight-normal: 450;
+  --font-weight-strong: 700;
+  --font-size-0: clamp(0.84rem, 0.82rem + 0.1vw, 0.9rem);
+  --font-size-1: clamp(1.0rem, 0.98rem + 0.2vw, 1.125rem);
+  --font-size-2: clamp(1.25rem, 1.15rem + 0.6vw, 1.5rem);
+  --font-size-3: clamp(1.6rem, 1.3rem + 1.2vw, 2.2rem);
+
+  /* Radius + Elevation */
+  --radius-sm: 12px;
+  --radius-md: 16px;
+  --radius-lg: 24px;
+  --shadow-1: 0 6px 20px rgba(0,0,0,0.08), 0 2px 6px rgba(0,0,0,0.06);
+  --shadow-2: 0 10px 30px rgba(0,0,0,0.14), 0 3px 10px rgba(0,0,0,0.1);
+
+  /* Spacing (fluid) */
+  --space-1: clamp(6px, 0.4vw, 10px);
+  --space-2: clamp(10px, 0.7vw, 14px);
+  --space-3: clamp(14px, 1vw, 20px);
+  --space-4: clamp(18px, 1.2vw, 26px);
+  --space-5: clamp(24px, 1.6vw, 34px);
+
+  /* Brand – luminous gradient */
+  --brand-1: #00e0ff;
+  --brand-2: #ff4ecd;
+  --brand-3: #ffaa00;
+  --brand-gradient: linear-gradient(90deg, var(--brand-1), var(--brand-2), var(--brand-3));
+
+  /* Semantic color tokens will be defined in schemes below */
+}
+
+/* -------------------------------
+   1) Color Schemes (auto)
+   Default: follow user's prefers-color-scheme
+---------------------------------- */
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    --bg: #0e0f12;            /* canvas */
+    --bg-elev-1: rgba(255,255,255,0.04);
+    --bg-elev-2: rgba(255,255,255,0.06);
+    --surface: #14161b;        /* solid surfaces */
+
+    --text-1: #e8e9ef;         /* primary text */
+    --text-2: #b7bbc7;         /* secondary */
+    --text-3: #8d93a3;         /* tertiary */
+
+    --stroke-1: rgba(255,255,255,0.08);
+    --focus-ring: rgba(0, 224, 255, 0.35);
+
+    --accent: #5ae1ff;         /* default accent */
+    --accent-contrast: #082027;
+
+    --success: #4ade80;        /* green 400 */
+    --warning: #fbbf24;        /* amber 400 */
+    --danger:  #fb7185;        /* rose 400 */
+
+    --glass: rgba(255,255,255,0.07);
+    --glass-border: rgba(255,255,255,0.10);
+    --glass-sheen: rgba(255,255,255,0.06);
+  }
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme]) {
+    --bg: #f6f7fb;
+    --bg-elev-1: rgba(0,0,0,0.02);
+    --bg-elev-2: rgba(0,0,0,0.04);
+    --surface: #ffffff;
+
+    --text-1: #1c1f26;
+    --text-2: #3b4251;
+    --text-3: #6b7280;
+
+    --stroke-1: rgba(0,0,0,0.08);
+    --focus-ring: rgba(0, 160, 200, 0.35);
+
+    --accent: #007aff;         /* iOS-ish blue */
+    --accent-contrast: #ffffff;
+
+    --success: #16a34a;        /* green 600 */
+    --warning: #d97706;        /* amber 700 */
+    --danger:  #e11d48;        /* rose 700 */
+
+    --glass: rgba(255,255,255,0.6);
+    --glass-border: rgba(0,0,0,0.08);
+    --glass-sheen: rgba(255,255,255,0.5);
+  }
+}
+
+/* Manual override via [data-theme] attribute */
+:root[data-theme="dark"] {
+  --bg: #0e0f12;
+  --bg-elev-1: rgba(255,255,255,0.04);
+  --bg-elev-2: rgba(255,255,255,0.06);
+  --surface: #14161b;
+  --text-1: #e8e9ef; --text-2: #b7bbc7; --text-3: #8d93a3;
+  --stroke-1: rgba(255,255,255,0.08);
+  --focus-ring: rgba(0, 224, 255, 0.35);
+  --accent: #5ae1ff; --accent-contrast: #082027;
+  --success: #4ade80; --warning: #fbbf24; --danger: #fb7185;
+  --glass: rgba(255,255,255,0.07); --glass-border: rgba(255,255,255,0.10); --glass-sheen: rgba(255,255,255,0.06);
+}
+:root[data-theme="light"] {
+  --bg: #f6f7fb;
+  --bg-elev-1: rgba(0,0,0,0.02);
+  --bg-elev-2: rgba(0,0,0,0.04);
+  --surface: #ffffff;
+  --text-1: #1c1f26; --text-2: #3b4251; --text-3: #6b7280;
+  --stroke-1: rgba(0,0,0,0.08);
+  --focus-ring: rgba(0, 160, 200, 0.35);
+  --accent: #007aff; --accent-contrast: #ffffff;
+  --success: #16a34a; --warning: #d97706; --danger: #e11d48;
+  --glass: rgba(255,255,255,0.6); --glass-border: rgba(0,0,0,0.08); --glass-sheen: rgba(255,255,255,0.5);
+}
+
+/* -------------------------------
+   2) App Base Styles
+---------------------------------- */
+
+html { font-family: var(--font-sans); }
+body {
+  background: radial-gradient(1200px 800px at 10% -20%, rgba(255,78,205,0.08), transparent 60%),
+              radial-gradient(900px 600px at 110% 10%, rgba(0,224,255,0.08), transparent 60%),
+              var(--bg);
+  color: var(--text-1);
+  line-height: 1.45;
+  font-weight: var(--font-weight-normal);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.container {
+  width: min(1100px, 92vw);
+  margin: 0 auto;
+  padding: var(--space-4) var(--space-2);
+}
+
+h1 { font-size: var(--font-size-3); letter-spacing: -0.02em; }
+h2 { font-size: var(--font-size-2); letter-spacing: -0.02em; color: var(--text-2); }
+h3 { font-size: 1.15rem; color: var(--text-2); }
+
+p { font-size: var(--font-size-1); color: var(--text-2); }
+small, .muted { color: var(--text-3); font-size: var(--font-size-0); }
+
+/* -------------------------------
+   3) Utilities
+---------------------------------- */
+
+.u-gradient-text { background: var(--brand-gradient); background-size: 300% 300%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: gradMove 8s ease infinite; }
+@keyframes gradMove { 0%{background-position:0% 50%} 50%{background-position:100% 50%} 100%{background-position:0% 50%} }
+
+.u-glass {
+  background: var(--glass);
+  backdrop-filter: blur(14px) saturate(160%);
+  -webkit-backdrop-filter: blur(14px) saturate(160%);
+  border: 1px solid var(--glass-border);
+}
+
+.u-ring { box-shadow: 0 0 0 3px var(--focus-ring); }
+.u-center { display: grid; place-items: center; }
+.u-stack > * + * { margin-top: var(--space-3); }
+.u-grid { display: grid; gap: var(--space-3); }
+
+/* -------------------------------
+   4) Components
+---------------------------------- */
+
+/* Card */
+.card {
+  border-radius: var(--radius-lg);
+  background: linear-gradient(180deg, var(--bg-elev-2), transparent), var(--surface);
+  border: 1px solid var(--stroke-1);
+  box-shadow: var(--shadow-1);
+}
+.card--glass { border-radius: var(--radius-lg); box-shadow: var(--shadow-2); }
+.card__body { padding: var(--space-4); }
+.card__footer { padding: var(--space-3) var(--space-4); border-top: 1px solid var(--stroke-1); display: flex; gap: var(--space-2); justify-content: flex-end; }
+
+/* Buttons */
+.button {
+  --btn-bg: var(--bg-elev-1);
+  --btn-fg: var(--text-1);
+  --btn-border: var(--stroke-1);
+  display: inline-flex; align-items: center; gap: 10px;
+  padding: 10px 16px; border-radius: 999px; border: 1px solid var(--btn-border);
+  background: var(--btn-bg); color: var(--btn-fg); cursor: pointer; text-decoration: none;
+  transition: transform .15s ease, box-shadow .2s ease, background .2s ease;
+  will-change: transform;
+}
+.button:hover { transform: translateY(-2px) scale(1.01); box-shadow: 0 10px 24px rgba(0,0,0,.12); }
+.button:active { transform: translateY(0) scale(.98); }
+.button:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--focus-ring); }
+
+.button--primary { --btn-bg: radial-gradient(120% 120% at 30% 10%, rgba(255,255,255,.12), transparent), var(--brand-gradient); --btn-fg: var(--accent-contrast); border: none; }
+.button--ghost { background: transparent; border: 1px solid var(--stroke-1); }
+.button--danger { --btn-bg: linear-gradient(180deg, rgba(251,113,133,.2), transparent), var(--danger); color: #fff; border: none; }
+
+/* Inputs */
+.input, .select, .textarea {
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-elev-1);
+  border: 1px solid var(--stroke-1);
+  color: var(--text-1);
+  transition: box-shadow .2s ease, background .2s ease, border-color .2s ease;
+}
+.input::placeholder, .textarea::placeholder { color: var(--text-3); }
+.input:focus, .select:focus, .textarea:focus { outline: none; box-shadow: 0 0 0 3px var(--focus-ring); }
+
+/* Toggle (Switch) */
+.switch { --w: 46px; --h: 28px; position: relative; width: var(--w); height: var(--h); background: var(--bg-elev-1); border: 1px solid var(--stroke-1); border-radius: 999px; cursor: pointer; transition: background .2s ease, border-color .2s ease; }
+.switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: calc(var(--h) - 4px); height: calc(var(--h) - 4px); border-radius: 50%; background: linear-gradient(180deg, var(--glass-sheen), var(--surface)); box-shadow: var(--shadow-1); transition: transform .2s ease; }
+.switch[aria-checked="true"] { background: var(--accent); border-color: transparent; }
+.switch[aria-checked="true"]::after { transform: translateX(calc(var(--w) - var(--h))); }
+
+/* Badges / Chips */
+.chip { display: inline-flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 999px; background: var(--bg-elev-1); border: 1px solid var(--stroke-1); color: var(--text-2); font-size: 0.85rem; }
+.chip--accent { background: rgba(0,224,255,.12); color: var(--accent); border-color: transparent; }
+
+/* Toast */
+.toast { position: fixed; right: var(--space-4); bottom: var(--space-4); min-width: 260px; max-width: 420px; padding: var(--space-3) var(--space-4); border-radius: var(--radius-md); background: var(--surface); border: 1px solid var(--stroke-1); box-shadow: var(--shadow-2); display: grid; gap: 6px; }
+.toast--success { border-color: color-mix(in oklab, var(--success) 40%, transparent); }
+.toast--warning { border-color: color-mix(in oklab, var(--warning) 40%, transparent); }
+.toast--danger  { border-color: color-mix(in oklab, var(--danger)  40%, transparent); }
+
+/* Modal */
+.modal { position: fixed; inset: 0; display: grid; place-items: center; padding: var(--space-5); background: color-mix(in srgb, var(--bg) 40%, transparent); backdrop-filter: blur(6px); }
+.modal__panel { width: min(680px, 96vw); border-radius: var(--radius-lg); background: var(--surface); border: 1px solid var(--stroke-1); box-shadow: var(--shadow-2); overflow: clip; }
+.modal__header, .modal__footer { padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--stroke-1); display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.modal__footer { border-top: 1px solid var(--stroke-1); border-bottom: none; justify-content: flex-end; }
+.modal__body { padding: var(--space-4); }
+
+/* Nav / Toolbar */
+.navbar { position: sticky; top: 0; z-index: 50; display: flex; align-items: center; gap: var(--space-2); padding: 10px 14px; border-radius: 18px; margin: var(--space-3) auto; width: min(1100px, 94vw); backdrop-filter: blur(12px) saturate(160%); -webkit-backdrop-filter: blur(12px) saturate(160%); border: 1px solid var(--glass-border); background: linear-gradient(180deg, var(--bg-elev-2), transparent); box-shadow: var(--shadow-1); }
+.navbar__title { font-weight: var(--font-weight-strong); letter-spacing: -0.02em; }
+.navbar__spacer { flex: 1; }
+
+/* Progress / Sentiment Bar (feedback-specific) */
+.sentiment { height: 10px; border-radius: 999px; overflow: hidden; background: var(--bg-elev-1); border: 1px solid var(--stroke-1); }
+.sentiment__fill { height: 100%; background: var(--brand-gradient); background-size: 200% 200%; animation: gradMove 6s ease infinite; }
+
+/* Feedback item */
+.feedback-item { display: grid; gap: 10px; padding: var(--space-3); border-radius: var(--radius-md); background: linear-gradient(180deg, var(--bg-elev-1), transparent); border: 1px solid var(--stroke-1); }
+.feedback-item__meta { display: flex; gap: 12px; align-items: center; color: var(--text-3); font-size: 0.9rem; }
+.feedback-item__title { font-weight: 600; color: var(--text-1); }
+.feedback-item__tags { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* -------------------------------
+   5) States & Interactions
+---------------------------------- */
+
+:where(a, button, .button) { -webkit-tap-highlight-color: transparent; }
+:where(a, .link) { color: var(--accent); text-decoration: none; }
+:where(a, .link):hover { text-decoration: underline; }
+
+/* Tilt + float on hover (use sparingly) */
+.floaty { transition: transform .3s ease, box-shadow .3s ease; will-change: transform; }
+.floaty:hover { transform: translateY(-3px); box-shadow: var(--shadow-2); }
+
+/* Focus visibility */
+:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--focus-ring); border-radius: 8px; }
+
+/* -------------------------------
+   6) Layout helpers
+---------------------------------- */
+
+.grid-cards { display: grid; gap: var(--space-3); grid-template-columns: repeat( auto-fit, minmax(260px, 1fr) ); }
+.stack { display: grid; gap: var(--space-3); }
+.row { display: flex; gap: var(--space-2); align-items: center; }
+
+/* Container Query example: make cards denser in tight columns */
+@container card (max-width: 340px) {
+  .card__body { padding: var(--space-3); }
+}
+.card { container-type: inline-size; container-name: card; }
+
+/* -------------------------------
+   7) Reduced Motion
+---------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; scroll-behavior: auto !important; }
+}
+
+/* -------------------------------
+   8) High Contrast tweak (optional)
+---------------------------------- */
+
+@media (forced-colors: active) {
+  .u-glass, .card, .modal__panel, .input, .button { border: 1px solid CanvasText; }
+}
+
+/* -------------------------------
+   9) Example helper classes for error/success toasts, badges
+---------------------------------- */
+.badge { display: inline-block; padding: 6px 10px; border-radius: 999px; font-weight: 600; border: 1px solid var(--stroke-1); background: var(--bg-elev-1); color: var(--text-2); }
+.badge--success { background: color-mix(in oklab, var(--success) 20%, transparent); color: var(--success); border-color: transparent; }
+.badge--warning { background: color-mix(in oklab, var(--warning) 20%, transparent); color: var(--warning); border-color: transparent; }
+.badge--danger  { background: color-mix(in oklab, var(--danger)  20%, transparent); color: var(--danger); border-color: transparent; }
+
+/* -------------------------------
+   10) Table (lightweight, scrollable)
+---------------------------------- */
+.table { width: 100%; border-collapse: collapse; background: var(--surface); border: 1px solid var(--stroke-1); border-radius: var(--radius-md); overflow: hidden; }
+.table th, .table td { padding: 12px 14px; border-bottom: 1px solid var(--stroke-1); text-align: left; }
+.table thead th { font-size: 0.9rem; color: var(--text-3); font-weight: 600; }
+.table tr:hover { background: var(--bg-elev-1); }
+
+/* -------------------------------
+   11) Tiny helpers for forms in feedback app
+---------------------------------- */
+.form { display: grid; gap: var(--space-3); }
+.label { font-size: 0.9rem; color: var(--text-2); }
+.help { font-size: 0.85rem; color: var(--text-3); }
+
+/* Emoji-like rating row */
+.rate { display: flex; gap: 8px; }
+.rate button { width: 42px; height: 42px; border-radius: 10px; border: 1px solid var(--stroke-1); background: var(--bg-elev-1); transition: transform .12s ease, box-shadow .2s ease; }
+.rate button:hover { transform: translateY(-2px); box-shadow: var(--shadow-1); }
+.rate button[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 0 3px var(--focus-ring); }
+
+/* -------------------------------
+   12) Footer + subtle glow
+---------------------------------- */
+.footer { margin-top: var(--space-5); padding: var(--space-4) 0; color: var(--text-3); position: relative; }
+.footer::before { content: ""; position: absolute; inset: auto 0 0 0; height: 120px; background: radial-gradient(50% 40% at 50% 100%, rgba(0,224,255,0.12), transparent 70%); pointer-events: none; }
