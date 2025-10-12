@@ -404,6 +404,27 @@ async def charger_details(location_id: str, station_id: str) -> Dict[str, Any]:
     return {"sessions": sessions}
 
 
+@app.get("/api/locations/{location_id}")
+async def location_details(location_id: str) -> Dict[str, Any]:
+    settings = _require_settings()
+    locations: Dict[str, Dict[str, float]] = getattr(app.state, "locations", {})
+
+    def _load_location() -> Dict[str, Any] | None:
+        conn = _connect_db(settings)
+        try:
+            return storage.location_usage(conn, location_id)
+        finally:
+            conn.close()
+
+    details = await asyncio.to_thread(_load_location)
+    if details is None:
+        raise HTTPException(status_code=404, detail="Location not found or no telemetry available")
+
+    coords = locations.get(location_id)
+    details["coordinates"] = coords if coords else None
+    return details
+
+
 @app.get("/api/locations")
 async def locations() -> Dict[str, Dict[str, float]]:
     return getattr(app.state, "locations", {})

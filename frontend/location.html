@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Location Insight &ndash; Endolla Watcher</title>
+  <link
+    rel="icon"
+    type="image/svg+xml"
+    href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%2300418a'/%3E%3Cpath d='M20 20h24v24H20z' fill='%23f7c948'/%3E%3Ccircle cx='32' cy='32' r='10' fill='%23ffffff' opacity='.85'/%3E%3C/svg%3E'
+  >
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="container">
+      <h1>Endolla Watcher</h1>
+      <nav>
+        <a href="index.html">Dashboard</a>
+        <a href="locations.html" aria-current="page">Locations</a>
+        <a href="problematic.html">Problematic</a>
+        <a href="about.html">About</a>
+      </nav>
+    </div>
+  </header>
+  <main class="container" id="location-detail">
+    <nav class="breadcrumb">
+      <a href="locations.html" class="breadcrumb-link">&larr; Back to locations overview</a>
+    </nav>
+    <section class="location-header">
+      <h2 id="location-title">Loading location…</h2>
+      <p class="muted" id="location-updated"></p>
+    </section>
+    <p class="muted" id="location-loading">Fetching the latest telemetry…</p>
+    <p class="muted" id="location-error" hidden>Unable to load location details.</p>
+    <section class="location-summary" aria-live="polite">
+      <div class="grid location-summary-grid">
+        <article class="card">
+          <h3>Stations tracked</h3>
+          <p id="location-stations">–</p>
+        </article>
+        <article class="card">
+          <h3>Ports tracked</h3>
+          <p id="location-ports">–</p>
+        </article>
+        <article class="card">
+          <h3>24h occupied time</h3>
+          <p id="location-occupation-day">–</p>
+        </article>
+        <article class="card">
+          <h3>24h active charging</h3>
+          <p id="location-active-day">–</p>
+        </article>
+        <article class="card">
+          <h3>7d availability</h3>
+          <p id="location-availability">–</p>
+        </article>
+        <article class="card">
+          <h3>7d monitored days</h3>
+          <p id="location-monitored">–</p>
+        </article>
+      </div>
+    </section>
+    <section class="location-charts">
+      <article class="chart-card">
+        <div class="section-header">
+          <div class="section-title">
+            <h3>Usage &ndash; last 24 hours</h3>
+            <p class="chart-subtitle">Hourly share of occupied time vs. available time</p>
+          </div>
+        </div>
+        <canvas id="location-usage-day" aria-label="Chart showing hourly utilization for the past 24 hours"></canvas>
+        <div id="location-usage-day-status" class="chart-status" hidden>Loading hourly usage…</div>
+      </article>
+      <article class="chart-card">
+        <div class="section-header">
+          <div class="section-title">
+            <h3>Usage &ndash; last 7 days</h3>
+            <p class="chart-subtitle">Daily share of occupied time vs. available time</p>
+          </div>
+        </div>
+        <canvas id="location-usage-week" aria-label="Chart showing daily utilization for the past seven days"></canvas>
+        <div id="location-usage-week-status" class="chart-status" hidden>Loading weekly usage…</div>
+      </article>
+    </section>
+    <section class="location-map-section">
+      <h3>Map</h3>
+      <div id="location-map" class="location-map" role="presentation"></div>
+      <p class="muted" id="location-map-note"></p>
+    </section>
+  </main>
+  <footer class="site-footer">
+    <div class="container">
+      <small>&copy; <span id="year"></span> Endolla Watcher</small>
+      <small id="last-updated"></small>
+    </div>
+  </footer>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.5/dist/chart.umd.min.js"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+  <script src="config.js"></script>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
