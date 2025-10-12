@@ -17,6 +17,7 @@
       <h1>Endolla Watcher</h1>
       <nav>
         <a href="index.html" aria-current="page">Dashboard</a>
+        <a href="problematic.html">Problematic</a>
         <a href="about.html">About</a>
       </nav>
     </div>
@@ -51,6 +52,49 @@
         </article>
       </div>
       <div class="meta" id="summary-meta"></div>
+    </section>
+
+    <section class="utilization" aria-labelledby="utilization-heading">
+      <div class="section-header">
+        <div class="section-title">
+          <h2 id="utilization-heading">Utilization Snapshot</h2>
+          <p class="muted" id="utilization-note">Loading utilization metrics…</p>
+        </div>
+      </div>
+      <div class="grid utilization-grid">
+        <article class="card">
+          <h3>Ports tracked</h3>
+          <p id="utilization-ports">–</p>
+        </article>
+        <article class="card">
+          <h3>Stations tracked</h3>
+          <p id="utilization-stations">–</p>
+        </article>
+        <article class="card">
+          <h3>Locations covered</h3>
+          <p id="utilization-locations">–</p>
+        </article>
+        <article class="card">
+          <h3>Sessions / port (day)</h3>
+          <p id="utilization-session-day">–</p>
+        </article>
+        <article class="card">
+          <h3>Sessions / port (hour)</h3>
+          <p id="utilization-session-hour">–</p>
+        </article>
+        <article class="card">
+          <h3>Occupied time</h3>
+          <p id="utilization-occupied">–</p>
+        </article>
+        <article class="card">
+          <h3>Active charging</h3>
+          <p id="utilization-active">–</p>
+        </article>
+        <article class="card">
+          <h3>Availability</h3>
+          <p id="utilization-availability">–</p>
+        </article>
+      </div>
     </section>
 
     <section class="charges-insight" aria-labelledby="charges-heading">
@@ -128,25 +172,6 @@
         </thead>
         <tbody id="daily-sessions"></tbody>
       </table>
-    </section>
-
-    <section class="problematic">
-      <h2>Problematic Chargers</h2>
-      <p class="muted" id="problematic-count">Loading…</p>
-      <div class="table-scroll">
-        <table aria-describedby="problematic-count">
-          <thead>
-            <tr>
-              <th scope="col">Location</th>
-              <th scope="col">Station</th>
-              <th scope="col">Port</th>
-              <th scope="col">Status</th>
-              <th scope="col">Reason</th>
-            </tr>
-          </thead>
-          <tbody id="problematic-table"></tbody>
-        </table>
-      </div>
     </section>
   </main>
   <footer class="site-footer">
