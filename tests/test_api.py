@@ -135,30 +135,74 @@ def test_dashboard_cache(monkeypatch, tmp_path, db_url):
         return {"calls": calls["count"]}
 
     def fake_fetch_once(db_url_value, dataset_file):
-        return None
+        return True
 
     monkeypatch.setattr(api, "_build_dashboard", fake_build)
     monkeypatch.setattr(api, "fetch_once", fake_fetch_once)
 
     with TestClient(api.app) as client:
-        assert calls["count"] == 1
+        assert calls["count"] == 2
         first = client.get("/api/dashboard")
         assert first.status_code == 200
-        assert first.json() == {"calls": 1}
-        assert calls["count"] == 1
+        assert first.json() == {"calls": 2}
+        assert calls["count"] == 2
 
         second = client.get("/api/dashboard")
         assert second.status_code == 200
-        assert second.json() == {"calls": 1}
-        assert calls["count"] == 1
+        assert second.json() == {"calls": 2}
+        assert calls["count"] == 2
+
+        refresh = client.post("/api/refresh")
+        assert refresh.status_code == 202
+        assert calls["count"] == 4
+
+        third = client.get("/api/dashboard")
+        assert third.status_code == 200
+        assert third.json() == {"calls": 4}
+        assert calls["count"] == 4
+
+
+def test_refresh_without_changes_keeps_cached_dashboard(monkeypatch, tmp_path, db_url):
+    locations = tmp_path / "locations.json"
+    locations.write_text(
+        json.dumps({"locations": [{"id": "L1", "latitude": 41.0, "longitude": 2.0}]}),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setenv("ENDOLLA_DB_URL", db_url)
+    monkeypatch.setenv("ENDOLLA_AUTO_FETCH", "0")
+    monkeypatch.setenv("ENDOLLA_LOCATIONS_FILE", str(locations))
+    monkeypatch.setenv("ENDOLLA_DASHBOARD_CACHE_TTL", "3600")
+
+    module = importlib.import_module("endolla_watcher.api")
+    api = importlib.reload(module)
+
+    calls = {"count": 0}
+
+    def fake_build(settings, locations_map, days, granularity):
+        calls["count"] += 1
+        return {"calls": calls["count"]}
+
+    def fake_fetch_once(db_url_value, dataset_file):
+        return False
+
+    monkeypatch.setattr(api, "_build_dashboard", fake_build)
+    monkeypatch.setattr(api, "fetch_once", fake_fetch_once)
+
+    with TestClient(api.app) as client:
+        assert calls["count"] == 2
+        first = client.get("/api/dashboard")
+        assert first.status_code == 200
+        assert first.json() == {"calls": 2}
+        assert calls["count"] == 2
 
         refresh = client.post("/api/refresh")
         assert refresh.status_code == 202
         assert calls["count"] == 2
 
-        third = client.get("/api/dashboard")
-        assert third.status_code == 200
-        assert third.json() == {"calls": 2}
+        second = client.get("/api/dashboard")
+        assert second.status_code == 200
+        assert second.json() == {"calls": 2}
         assert calls["count"] == 2
 
 
@@ -185,14 +229,14 @@ def test_dashboard_cache_presets(monkeypatch, tmp_path, db_url):
         return {"days": days, "granularity": granularity}
 
     def fake_fetch_once(db_url_value, dataset_file):
-        return None
+        return True
 
     monkeypatch.setattr(api, "_build_dashboard", fake_build)
     monkeypatch.setattr(api, "fetch_once", fake_fetch_once)
 
     with TestClient(api.app) as client:
-        assert calls == [(10, "hour")]
+        assert calls == [(10, "hour"), (5, "hour"), (5, "day")]
         first = client.get("/api/dashboard", params={"days": 10, "granularity": "hour"})
         assert first.status_code == 200
         assert first.json() == {"days": 10, "granularity": "hour"}
-        assert calls == [(10, "hour")]
+        assert calls == [(10, "hour"), (5, "hour"), (5, "day")]
