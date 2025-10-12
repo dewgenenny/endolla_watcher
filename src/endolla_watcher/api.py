@@ -36,12 +36,48 @@ class Settings:
     cors_origins: list[str]
     debug: bool
     dashboard_cache_ttl: int
+    dashboard_cache_presets: list[tuple[int, str]]
 
 
 def _parse_bool(value: Optional[str], default: bool) -> bool:
     if value is None:
         return default
     return value.strip().lower() not in {"0", "false", "no", "off"}
+
+
+def _parse_cache_presets(value: Optional[str]) -> list[tuple[int, str]]:
+    """Convert preset definitions to (days, granularity) pairs."""
+
+    default = [(5, "hour"), (5, "day")]
+    if value is None:
+        return default
+
+    presets: list[tuple[int, str]] = []
+    for item in value.split(","):
+        item = item.strip()
+        if not item:
+            continue
+        if ":" not in item:
+            logger.warning("Ignoring invalid dashboard cache preset '%s'", item)
+            continue
+        days_raw, granularity_raw = item.split(":", 1)
+        try:
+            days_value = int(days_raw.strip())
+        except ValueError:
+            logger.warning(
+                "Ignoring dashboard cache preset '%s' with non-integer days", item
+            )
+            continue
+        granularity_value = granularity_raw.strip().lower()
+        if granularity_value not in {"day", "hour"}:
+            logger.warning(
+                "Ignoring dashboard cache preset '%s' with unsupported granularity",
+                item,
+            )
+            continue
+        presets.append((days_value, granularity_value))
+
+    return presets or default
 
 
 def load_settings() -> Settings:
@@ -79,6 +115,9 @@ def load_settings() -> Settings:
     cors_origins = [origin.strip() for origin in cors_env.split(",") if origin.strip()]
     debug = _parse_bool(os.getenv("ENDOLLA_DEBUG"), False)
     dashboard_cache_ttl = int(os.getenv("ENDOLLA_DASHBOARD_CACHE_TTL", "60"))
+    dashboard_cache_presets = _parse_cache_presets(
+        os.getenv("ENDOLLA_DASHBOARD_CACHE_PRESETS")
+    )
 
     return Settings(
         db_url=db_url,
@@ -90,6 +129,7 @@ def load_settings() -> Settings:
         cors_origins=cors_origins or ["*"],
         debug=debug,
         dashboard_cache_ttl=dashboard_cache_ttl,
+        dashboard_cache_presets=dashboard_cache_presets,
     )
 
 _INITIAL_SETTINGS = load_settings()
@@ -117,6 +157,7 @@ async def _fetch_once(settings: Settings) -> None:
         await asyncio.to_thread(fetch_once, settings.db_url, settings.dataset_file)
         app.state.last_fetch = datetime.now().astimezone().isoformat(timespec="seconds")
         await _clear_dashboard_cache()
+        await _warm_dashboard_cache(settings)
     except Exception:  # pragma: no cover - defensive logging
         logger.exception("Dataset fetch failed")
 
@@ -177,6 +218,39 @@ async def _clear_dashboard_cache() -> None:
         cache.clear()
 
 
+async def _warm_dashboard_cache(settings: Settings) -> None:
+    ttl = settings.dashboard_cache_ttl
+    if ttl <= 0:
+        return
+
+    cache: Dict[Any, Dict[str, Any]] | None = getattr(app.state, "dashboard_cache", None)
+    if cache is None:
+        return
+
+    lock: asyncio.Lock | None = getattr(app.state, "dashboard_cache_lock", None)
+    locations: Dict[str, Dict[str, float]] = getattr(app.state, "locations", {})
+
+    for days, granularity in settings.dashboard_cache_presets:
+        try:
+            data = await asyncio.to_thread(
+                _build_dashboard, settings, locations, days, granularity
+            )
+        except Exception:  # pragma: no cover - defensive logging
+            logger.exception(
+                "Failed to warm dashboard cache for days=%s granularity=%s",
+                days,
+                granularity,
+            )
+            continue
+
+        expires = time.time() + ttl
+        if lock is not None:
+            async with lock:
+                cache[(days, granularity)] = {"data": data, "expires": expires}
+        else:  # pragma: no cover - startup initialises the lock
+            cache[(days, granularity)] = {"data": data, "expires": expires}
+
+
 def _build_dashboard(
     settings: Settings,
     locations: Dict[str, Dict[str, float]],
@@ -231,6 +305,8 @@ async def on_startup() -> None:
     if settings.auto_fetch:
         await _fetch_once(settings)
         app.state.fetch_task = asyncio.create_task(_fetch_loop(settings))
+    else:
+        await _warm_dashboard_cache(settings)
 
 
 @app.on_event("shutdown")

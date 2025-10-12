@@ -32,7 +32,10 @@ ENDOLLA_AUTO_FETCH=0 uvicorn endolla_watcher.api:app --reload
 
 Dashboard responses are cached for 60 seconds by default to make repeated page
 loads more responsive. Adjust this via `ENDOLLA_DASHBOARD_CACHE_TTL` (set to `0`
-to disable caching entirely).
+to disable caching entirely). Warm specific `(days, granularity)` combinations
+ahead of time with `ENDOLLA_DASHBOARD_CACHE_PRESETS` (for example,
+`5:hour,5:day`) so the dashboard endpoint can serve popular queries from cache
+immediately after a dataset refresh.
 
 You can still generate static reports for debugging with the legacy CLI tools:
 
