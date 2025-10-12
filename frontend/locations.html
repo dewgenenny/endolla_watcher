@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Location Utilization &ndash; Endolla Watcher</title>
+  <link
+    rel="icon"
+    type="image/svg+xml"
+    href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%2300418a'/%3E%3Cpath d='M20 20h24v24H20z' fill='%23f7c948'/%3E%3Ccircle cx='32' cy='32' r='10' fill='%23ffffff' opacity='.85'/%3E%3C/svg%3E'
+  >
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="container">
+      <h1>Endolla Watcher</h1>
+      <nav>
+        <a href="index.html">Dashboard</a>
+        <a href="locations.html" aria-current="page">Locations</a>
+        <a href="problematic.html">Problematic</a>
+        <a href="about.html">About</a>
+      </nav>
+    </div>
+  </header>
+  <main class="container">
+    <section class="utilization" aria-labelledby="location-utilization-heading">
+      <div class="section-header">
+        <div class="section-title">
+          <h2 id="location-utilization-heading">Location Utilization</h2>
+          <p class="muted" id="utilization-note">Loading utilization metrics…</p>
+        </div>
+      </div>
+      <p class="muted utilization-panel-note">
+        Locations ordered by occupied time during the telemetry window.
+      </p>
+      <div class="table-scroll">
+        <table aria-describedby="utilization-note">
+          <thead>
+            <tr>
+              <th scope="col">Location</th>
+              <th scope="col">Stations</th>
+              <th scope="col">Ports</th>
+              <th scope="col" id="utilization-rate-header" aria-sort="descending">
+                <button type="button" id="utilization-sort" class="sort-button">
+                  <span class="sort-button-label">Utilization rate</span>
+                  <span class="sort-indicator" aria-hidden="true">High → Low</span>
+                </button>
+              </th>
+            </tr>
+          </thead>
+          <tbody id="utilization-locations-body"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+  <footer class="site-footer">
+    <div class="container">
+      <small>&copy; <span id="year"></span> Endolla Watcher</small>
+      <small id="last-updated"></small>
+    </div>
+  </footer>
+  <script src="config.js"></script>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

@@ -17,6 +17,7 @@
       <h1>Endolla Watcher</h1>
       <nav>
         <a href="index.html" aria-current="page">Dashboard</a>
+        <a href="locations.html">Locations</a>
         <a href="problematic.html">Problematic</a>
         <a href="about.html">About</a>
       </nav>
@@ -61,33 +62,7 @@
           <p class="muted" id="utilization-note">Loading utilization metrics…</p>
         </div>
       </div>
-      <div
-        class="utilization-tabs"
-        id="utilization-tabs"
-        role="tablist"
-        aria-label="Utilization views"
-      >
-        <button
-          type="button"
-          class="utilization-tab is-active"
-          role="tab"
-          aria-selected="true"
-          data-tab="snapshot"
-        >
-          Snapshot
-        </button>
-        <button
-          type="button"
-          class="utilization-tab"
-          role="tab"
-          aria-selected="false"
-          data-tab="locations"
-          tabindex="-1"
-        >
-          Locations
-        </button>
-      </div>
-      <div class="utilization-panel is-active" data-utilization-panel="snapshot">
+      <div class="utilization-panel">
         <div class="grid utilization-grid">
           <article class="card">
             <h3>Ports tracked</h3>
@@ -123,29 +98,10 @@
           </article>
         </div>
       </div>
-      <div class="utilization-panel" data-utilization-panel="locations" hidden>
-        <p class="muted utilization-panel-note">
-          Locations ordered by occupied time during the telemetry window.
-        </p>
-        <div class="table-scroll">
-          <table aria-describedby="utilization-note">
-            <thead>
-              <tr>
-                <th scope="col">Location</th>
-                <th scope="col">Stations</th>
-                <th scope="col">Ports</th>
-                <th scope="col" id="utilization-rate-header" aria-sort="descending">
-                  <button type="button" id="utilization-sort" class="sort-button">
-                    <span class="sort-button-label">Utilization rate</span>
-                    <span class="sort-indicator" aria-hidden="true">High → Low</span>
-                  </button>
-                </th>
-              </tr>
-            </thead>
-            <tbody id="utilization-locations-body"></tbody>
-          </table>
-        </div>
-      </div>
+      <p class="muted utilization-panel-note">
+        Explore detailed location-level utilization on the
+        <a href="locations.html">Locations overview</a> page.
+      </p>
     </section>
 
     <section class="charges-insight" aria-labelledby="charges-heading">
