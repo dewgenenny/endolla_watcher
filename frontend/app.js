@@ -2196,7 +2196,9 @@ const applyPendingLocationMarker = () => {
   if (locationMapMarker && typeof locationMapMarker.remove === 'function') {
     locationMapMarker.remove();
   }
-  locationMapMarker = new maplibregl.Marker({ color: '#2563eb' })
+  const markerElement = document.createElement('div');
+  markerElement.className = 'location-map__marker';
+  locationMapMarker = new maplibregl.Marker({ element: markerElement, anchor: 'center' })
     .setLngLat([lon, lat])
     .addTo(locationMap);
   locationMap.jumpTo({ center: [lon, lat], zoom: 16 });

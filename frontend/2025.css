@@ -902,6 +902,16 @@ main {
   box-shadow: var(--shadow-1);
 }
 
+.location-map__marker {
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  background: #dc2626;
+  border: 2px solid #ffffff;
+  box-shadow: 0 0 0 2px rgb(220 38 38 / 20%);
+  pointer-events: none;
+}
+
 .heatmap-overview {
   display: grid;
   gap: var(--space-3);
