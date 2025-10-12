@@ -22,6 +22,8 @@ HIGH_DETAIL_DAYS = 7
 MEDIUM_DETAIL_DAYS = 30
 
 UNAVAILABLE_STATUSES = {"OUT_OF_ORDER", "UNAVAILABLE"}
+OCCUPIED_STATUSES = {"IN_USE", "FINISHED", "COMPLETED", "OCCUPIED", "CHARGING"}
+ACTIVE_CHARGING_STATUSES = {"IN_USE", "CHARGING"}
 
 PortKey = Tuple[str | None, str | None, str | None]
 
@@ -318,7 +320,13 @@ def save_snapshot(
     prune_old_data(conn)
 
 
-def _session_durations(statuses: List[Tuple[datetime, str]]) -> List[float]:
+def _session_durations(
+    statuses: List[Tuple[datetime, str]],
+    *,
+    now: datetime | None = None,
+) -> List[float]:
+    if now is None:
+        now = datetime.now().astimezone()
     sessions: List[float] = []
     start: datetime | None = None
     for ts, status in statuses:
@@ -330,7 +338,7 @@ def _session_durations(statuses: List[Tuple[datetime, str]]) -> List[float]:
                 sessions.append((ts - start).total_seconds() / 60)
                 start = None
     if start is not None:
-        sessions.append((datetime.now().astimezone() - start).total_seconds() / 60)
+        sessions.append((now - start).total_seconds() / 60)
     return sessions
 
 
@@ -461,7 +469,9 @@ def analyze_chargers(
             has_long = any(
                 any(
                     d >= rules.long_session_min
-                    for d in _session_durations([(ts, st) for ts, st in events if ts >= since_long])
+                    for d in _session_durations(
+                        [(ts, st) for ts, st in events if ts >= since_long], now=now
+                    )
                 )
                 for events in ports.values()
             )
@@ -575,17 +585,246 @@ def _count_unused_chargers(
     return count
 
 
-def stats_from_db(conn: Connection) -> Dict[str, float]:
+def _status_intervals(
+    events: List[Tuple[datetime, str | None]],
+    *,
+    end: datetime,
+) -> List[Tuple[datetime, datetime, str | None]]:
+    if not events:
+        return []
+    ordered = sorted(events, key=lambda item: item[0])
+    intervals: List[Tuple[datetime, datetime, str | None]] = []
+    prev_ts, prev_status = ordered[0]
+    if prev_ts >= end:
+        return []
+    for ts, status in ordered[1:]:
+        if ts <= prev_ts:
+            prev_ts, prev_status = ts, status
+            continue
+        segment_end = min(ts, end)
+        if segment_end > prev_ts:
+            intervals.append((prev_ts, segment_end, prev_status))
+        prev_ts, prev_status = ts, status
+        if prev_ts >= end:
+            break
+    if prev_ts < end:
+        intervals.append((prev_ts, end, prev_status))
+    return [(start, stop, status) for start, stop, status in intervals if stop > start]
+
+
+def _empty_totals() -> Dict[str, float]:
+    return {
+        "sessions": 0.0,
+        "monitored_seconds": 0.0,
+        "available_seconds": 0.0,
+        "occupied_seconds": 0.0,
+        "active_seconds": 0.0,
+        "port_count": 0.0,
+    }
+
+
+def _accumulate_totals(target: Dict[str, float], source: Dict[str, float]) -> None:
+    target["sessions"] = target.get("sessions", 0.0) + source.get("sessions", 0.0)
+    target["monitored_seconds"] = target.get("monitored_seconds", 0.0) + source.get(
+        "monitored_seconds", 0.0
+    )
+    target["available_seconds"] = target.get("available_seconds", 0.0) + source.get(
+        "available_seconds", 0.0
+    )
+    target["occupied_seconds"] = target.get("occupied_seconds", 0.0) + source.get(
+        "occupied_seconds", 0.0
+    )
+    target["active_seconds"] = target.get("active_seconds", 0.0) + source.get(
+        "active_seconds", 0.0
+    )
+    target["port_count"] = target.get("port_count", 0.0) + source.get("port_count", 0.0)
+
+
+def _compute_port_utilization(
+    events: List[Tuple[datetime, str]],
+    *,
+    now: datetime,
+) -> Dict[str, float] | None:
+    intervals = _status_intervals(events, end=now)
+    if not intervals:
+        return None
+    total_seconds = 0.0
+    available_seconds = 0.0
+    occupied_seconds = 0.0
+    active_seconds = 0.0
+    for start, end, status in intervals:
+        if end <= start:
+            continue
+        duration = (end - start).total_seconds()
+        if duration <= 0:
+            continue
+        total_seconds += duration
+        if status is not None and status not in UNAVAILABLE_STATUSES:
+            available_seconds += duration
+        if status in OCCUPIED_STATUSES:
+            occupied_seconds += duration
+        if status in ACTIVE_CHARGING_STATUSES:
+            active_seconds += duration
+    if total_seconds <= 0:
+        return None
+    sessions = len(_session_durations(events, now=now))
+    return {
+        "sessions": float(sessions),
+        "monitored_seconds": total_seconds,
+        "available_seconds": available_seconds,
+        "occupied_seconds": occupied_seconds,
+        "active_seconds": active_seconds,
+        "port_count": 1.0,
+    }
+
+
+def _format_utilization_metrics(totals: Dict[str, float]) -> Dict[str, float]:
+    monitored_seconds = totals.get("monitored_seconds", 0.0)
+    available_seconds = totals.get("available_seconds", 0.0)
+    occupied_seconds = totals.get("occupied_seconds", 0.0)
+    active_seconds = totals.get("active_seconds", 0.0)
+    sessions_raw = totals.get("sessions", 0.0)
+    if isinstance(sessions_raw, float) and sessions_raw.is_integer():
+        sessions_value: float | int = int(sessions_raw)
+    else:
+        sessions_value = sessions_raw
+    hours = monitored_seconds / 3600 if monitored_seconds else 0.0
+    days = monitored_seconds / 86400 if monitored_seconds else 0.0
+    return {
+        "sessions": sessions_value,
+        "monitored_seconds": monitored_seconds,
+        "monitored_hours": hours,
+        "monitored_days": days,
+        "available_seconds": available_seconds,
+        "occupied_seconds": occupied_seconds,
+        "active_seconds": active_seconds,
+        "session_count_per_day": sessions_raw / days if days else 0.0,
+        "session_count_per_hour": sessions_raw / hours if hours else 0.0,
+        "occupation_utilization_pct": (occupied_seconds / available_seconds) * 100
+        if available_seconds
+        else 0.0,
+        "active_charging_utilization_pct": (active_seconds / available_seconds) * 100
+        if available_seconds
+        else 0.0,
+        "availability_ratio": (available_seconds / monitored_seconds)
+        if monitored_seconds
+        else 0.0,
+    }
+
+
+def _utilization_summary(
+    history: Dict[PortKey, List[Tuple[datetime, str]]],
+    *,
+    now: datetime,
+) -> Dict[str, Any]:
+    port_rows: List[Dict[str, Any]] = []
+    station_totals: Dict[Tuple[str | None, str | None], Dict[str, Any]] = {}
+    location_totals: Dict[str | None, Dict[str, Any]] = {}
+    network_totals = _empty_totals()
+
+    for (loc, sta, port), events in history.items():
+        totals = _compute_port_utilization(events, now=now)
+        if totals is None:
+            continue
+        metrics = _format_utilization_metrics(totals)
+        port_rows.append(
+            {
+                "location_id": loc,
+                "station_id": sta,
+                "port_id": port,
+                **metrics,
+            }
+        )
+
+        station_key = (loc, sta)
+        station_acc = station_totals.setdefault(station_key, _empty_totals())
+        _accumulate_totals(station_acc, totals)
+
+        location_acc = location_totals.setdefault(
+            loc,
+            {
+                **_empty_totals(),
+                "station_ids": set(),
+            },
+        )
+        _accumulate_totals(location_acc, totals)
+        location_acc["station_ids"].add(sta)
+
+        _accumulate_totals(network_totals, totals)
+
+    port_rows.sort(
+        key=lambda row: (
+            row.get("location_id") or "",
+            row.get("station_id") or "",
+            row.get("port_id") or "",
+        )
+    )
+
+    station_rows: List[Dict[str, Any]] = []
+    for (loc, sta), totals in station_totals.items():
+        metrics = _format_utilization_metrics(totals)
+        metrics.update(
+            {
+                "location_id": loc,
+                "station_id": sta,
+                "port_count": int(totals.get("port_count", 0)),
+            }
+        )
+        station_rows.append(metrics)
+    station_rows.sort(
+        key=lambda row: (row.get("location_id") or "", row.get("station_id") or "")
+    )
+
+    location_rows: List[Dict[str, Any]] = []
+    for loc, totals in location_totals.items():
+        station_ids = totals.pop("station_ids", set())
+        metrics = _format_utilization_metrics(totals)
+        metrics.update(
+            {
+                "location_id": loc,
+                "station_count": len({sid for sid in station_ids if sid is not None}),
+                "port_count": int(totals.get("port_count", 0)),
+            }
+        )
+        location_rows.append(metrics)
+    location_rows.sort(key=lambda row: row.get("location_id") or "")
+
+    network_metrics = _format_utilization_metrics(network_totals)
+    network_metrics.update(
+        {
+            "port_count": int(network_totals.get("port_count", 0)),
+            "station_count": len(station_totals),
+            "location_count": len({loc for loc in location_totals.keys() if loc is not None}),
+        }
+    )
+
+    return {
+        "ports": port_rows,
+        "stations": station_rows,
+        "locations": location_rows,
+        "network": network_metrics,
+    }
+
+
+def stats_from_db(conn: Connection, *, now: datetime | None = None) -> Dict[str, Any]:
+    if now is None:
+        now = datetime.now().astimezone()
     latest = _latest_records(conn)
     stats = stats_mod.from_records(latest)
     history = _all_history(conn)
-    stats["sessions"] = sum(len(_session_durations(v)) for v in history.values())
+    stats["sessions"] = sum(len(_session_durations(v, now=now)) for v in history.values())
     stats["short_sessions"] = sum(
-        len([d for d in _session_durations(v) if d < stats_mod.SHORT_SESSION_MAX_MIN])
+        len(
+            [
+                d
+                for d in _session_durations(v, now=now)
+                if d < stats_mod.SHORT_SESSION_MAX_MIN
+            ]
+        )
         for v in history.values()
     )
 
-    since = datetime.now().astimezone() - timedelta(hours=24)
+    since = now - timedelta(hours=24)
     durations: List[float] = []
     for events in history.values():
         for start, end, dur in _session_records(events):
@@ -593,13 +832,14 @@ def stats_from_db(conn: Connection) -> Dict[str, float]:
                 durations.append(dur)
     stats["avg_session_min"] = sum(durations) / len(durations) if durations else 0.0
 
-    today = datetime.now().astimezone().replace(hour=0, minute=0, second=0, microsecond=0)
+    today = now.replace(hour=0, minute=0, second=0, microsecond=0)
     charges_today = 0
     for events in history.values():
         for start, _, _ in _session_records(events):
             if start >= today:
                 charges_today += 1
     stats["charges_today"] = charges_today
+    stats["utilization"] = _utilization_summary(history, now=now)
     return stats
 
 

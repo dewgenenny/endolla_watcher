@@ -1,5 +1,7 @@
 from datetime import datetime, timedelta, timezone
 
+import pytest
+
 import endolla_watcher.storage as storage
 
 
@@ -143,3 +145,66 @@ def test_sessions_time_series_hourly(conn):
     target_bucket = next((entry for entry in series if entry.get("start") == target_hour_key), None)
     assert target_bucket is not None
     assert target_bucket["sessions"] >= 1
+
+
+def test_utilization_metrics(conn):
+    now = datetime.now(timezone.utc)
+
+    def _record(port: str, ts: datetime, status: str) -> None:
+        storage.save_snapshot(
+            conn,
+            [
+                {
+                    "location_id": "L1",
+                    "station_id": "S1",
+                    "port_id": port,
+                    "status": status,
+                    "last_updated": ts.isoformat(),
+                }
+            ],
+            ts=ts,
+        )
+
+    # Port P1 timeline (2 hours monitored)
+    _record("P1", now - timedelta(hours=2), "AVAILABLE")
+    _record("P1", now - timedelta(hours=1, minutes=30), "IN_USE")
+    _record("P1", now - timedelta(minutes=30), "AVAILABLE")
+    _record("P1", now - timedelta(minutes=10), "OUT_OF_ORDER")
+    _record("P1", now - timedelta(minutes=5), "AVAILABLE")
+
+    # Port P2 timeline (3 hours monitored)
+    _record("P2", now - timedelta(hours=3), "AVAILABLE")
+    _record("P2", now - timedelta(hours=2), "IN_USE")
+    _record("P2", now - timedelta(hours=1), "AVAILABLE")
+    _record("P2", now - timedelta(minutes=30), "UNAVAILABLE")
+    _record("P2", now - timedelta(minutes=10), "AVAILABLE")
+
+    stats = storage.stats_from_db(conn, now=now)
+    util = stats["utilization"]
+
+    p1 = next(item for item in util["ports"] if item["port_id"] == "P1")
+    assert p1["sessions"] == 1
+    assert p1["monitored_hours"] == pytest.approx(2.0)
+    assert p1["session_count_per_day"] == pytest.approx(12.0, rel=1e-6)
+    assert p1["session_count_per_hour"] == pytest.approx(0.5, rel=1e-6)
+    assert p1["occupation_utilization_pct"] == pytest.approx(52.173913, rel=1e-6)
+    assert p1["active_charging_utilization_pct"] == pytest.approx(52.173913, rel=1e-6)
+    assert p1["availability_ratio"] == pytest.approx(0.958333, rel=1e-6)
+
+    station = next(item for item in util["stations"] if item["station_id"] == "S1")
+    assert station["port_count"] == 2
+    assert station["session_count_per_hour"] == pytest.approx(0.4, rel=1e-6)
+    assert station["occupation_utilization_pct"] == pytest.approx(43.636364, rel=1e-6)
+    assert station["availability_ratio"] == pytest.approx(0.916666, rel=1e-6)
+
+    location = util["locations"][0]
+    assert location["location_id"] == "L1"
+    assert location["station_count"] == 1
+    assert location["port_count"] == 2
+    assert location["availability_ratio"] == pytest.approx(0.916666, rel=1e-6)
+
+    network = util["network"]
+    assert network["port_count"] == 2
+    assert network["station_count"] == 1
+    assert network["location_count"] == 1
+    assert network["session_count_per_day"] == pytest.approx(9.6, rel=1e-6)
