@@ -16,7 +16,13 @@ This project monitors the Barcelona Endolla open data to find underused or out-o
 - Docker support is expected for local development and CI.
 
 ## TODO
-_None_
+The following feature backlog should be tackled in order across future sessions:
+
+1. Compute utilization and availability metrics for ports, stations, and districts (session-count utilization, charger-occupation utilization, active-charging utilization, availability ratio).
+2. Distribution and temporal pattern analysis, including richer duration statistics, occupancy heatmaps, and longer-term trend exploration.
+3. Reliability and downtime analysis with MTBF/MTTR calculations, outage tracking, and visualisations.
+4. Geospatial and cluster analysis that ties utilization and availability metrics to location data and external datasets.
+5. Predictive and anomaly detection models for demand forecasting and adaptive thresholding.
 
 ## Completed
 - Dockerise the loop functionality so it can run unattended.

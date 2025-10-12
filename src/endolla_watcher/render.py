@@ -169,7 +169,7 @@ ABOUT_TEMPLATE = """
 
 def render(
     problematic: List[Dict[str, Any]],
-    stats: Dict[str, float] | None = None,
+    stats: Dict[str, Any] | None = None,
     history: List[Dict[str, Any]] | None = None,
     daily: List[Dict[str, Any]] | None = None,
     rule_counts: Dict[str, int] | None = None,
@@ -190,6 +190,12 @@ def render(
             "charges_today": 0,
             "short_sessions": 0,
             "avg_session_min": 0.0,
+            "utilization": {
+                "ports": [],
+                "stations": [],
+                "locations": [],
+                "network": {},
+            },
         }
     if rule_counts is None:
         rule_counts = {"unused": 0, "no_long": 0, "unavailable": 0}
