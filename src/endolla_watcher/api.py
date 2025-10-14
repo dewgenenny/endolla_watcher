@@ -21,6 +21,8 @@ from . import storage
 
 logger = logging.getLogger(__name__)
 
+DASHBOARD_WARM_INTERVAL = 15 * 60
+
 
 @dataclass
 class Settings:
@@ -285,6 +287,23 @@ async def _warm_dashboard_cache(settings: Settings) -> None:
             cache[(days, granularity)] = entry
 
 
+async def _dashboard_warm_loop(settings: Settings, interval: int) -> None:
+    interval_seconds = max(interval, 1)
+    logger.info(
+        "Starting dashboard warm loop with interval %ss", interval_seconds
+    )
+    try:
+        while True:
+            try:
+                await _warm_dashboard_cache(settings)
+            except Exception:  # pragma: no cover - defensive logging
+                logger.exception("Failed to warm dashboard cache")
+            await asyncio.sleep(interval_seconds)
+    except asyncio.CancelledError:  # pragma: no cover - shutdown cleanup
+        logger.debug("Dashboard warm loop cancelled")
+        raise
+
+
 def _build_dashboard(
     settings: Settings,
     locations: Dict[str, Dict[str, float]],
@@ -333,6 +352,7 @@ async def on_startup() -> None:
         )
     app.state.locations = await _load_locations(settings)
     app.state.fetch_task = None
+    app.state.dashboard_warm_task = None
     app.state.last_fetch = None
     app.state.dashboard_cache: Dict[Any, Dict[str, Any]] = {}
     app.state.dashboard_cache_lock = asyncio.Lock()
@@ -340,9 +360,12 @@ async def on_startup() -> None:
     app.state.last_data_update = None
     if settings.auto_fetch:
         await _fetch_once(settings)
+    await _warm_dashboard_cache(settings)
+    if settings.auto_fetch:
         app.state.fetch_task = asyncio.create_task(_fetch_loop(settings))
-    else:
-        await _warm_dashboard_cache(settings)
+    app.state.dashboard_warm_task = asyncio.create_task(
+        _dashboard_warm_loop(settings, DASHBOARD_WARM_INTERVAL)
+    )
 
 
 @app.on_event("shutdown")
@@ -356,6 +379,15 @@ async def on_shutdown() -> None:
             pass
         finally:
             app.state.fetch_task = None
+    warm_task: asyncio.Task | None = getattr(app.state, "dashboard_warm_task", None)
+    if warm_task is not None:
+        warm_task.cancel()
+        try:
+            await warm_task
+        except asyncio.CancelledError:
+            pass
+        finally:
+            app.state.dashboard_warm_task = None
 
 
 def _require_settings() -> Settings:
