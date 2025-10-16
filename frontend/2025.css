@@ -381,6 +381,13 @@ main {
   gap: var(--space-4);
 }
 
+.page-intro {
+  max-width: 60ch;
+  font-size: var(--font-size-1);
+  color: var(--text-2);
+  line-height: 1.55;
+}
+
 .site-header {
   padding: var(--space-3) 0 var(--space-1);
 }
