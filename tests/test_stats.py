@@ -66,6 +66,56 @@ def test_count_short_sessions(conn):
     assert stats["charges_today"] == 1
 
 
+def test_mttr_station(conn):
+    now = datetime.now(timezone.utc)
+
+    base = now - timedelta(hours=3)
+
+    def _snapshot(ts: datetime, port: str, status: str) -> None:
+        storage.save_snapshot(
+            conn,
+            [
+                {
+                    "location_id": "L1",
+                    "station_id": "S1",
+                    "port_id": port,
+                    "status": status,
+                    "last_updated": ts.isoformat(),
+                }
+            ],
+            ts=ts,
+        )
+
+    _snapshot(base, "P1", "AVAILABLE")
+    _snapshot(base, "P2", "AVAILABLE")
+
+    first_outage_start = base + timedelta(minutes=30)
+    _snapshot(first_outage_start, "P1", "OUT_OF_ORDER")
+    _snapshot(first_outage_start, "P2", "OUT_OF_ORDER")
+
+    first_outage_end = first_outage_start + timedelta(minutes=30)
+    _snapshot(first_outage_end, "P1", "AVAILABLE")
+    _snapshot(first_outage_end, "P2", "AVAILABLE")
+
+    second_outage_start = first_outage_end + timedelta(minutes=30)
+    _snapshot(second_outage_start, "P1", "UNAVAILABLE")
+    _snapshot(second_outage_start, "P2", "UNAVAILABLE")
+
+    second_outage_end = second_outage_start + timedelta(minutes=60)
+    _snapshot(second_outage_end, "P1", "AVAILABLE")
+    _snapshot(second_outage_end, "P2", "AVAILABLE")
+
+    partial_start = second_outage_end + timedelta(minutes=10)
+    _snapshot(partial_start, "P1", "OUT_OF_ORDER")
+
+    partial_end = partial_start + timedelta(minutes=20)
+    _snapshot(partial_end, "P1", "AVAILABLE")
+
+    stats = storage.stats_from_db(conn, now=partial_end + timedelta(minutes=10))
+
+    assert stats["mttr_minutes"] == pytest.approx(45.0)
+
+
 def test_sessions_per_day_counts_active_sessions(conn):
     now = datetime.now(timezone.utc)
 

@@ -6,6 +6,7 @@ import os
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from itertools import groupby
 from typing import Any, Callable, Dict, Iterable, Iterator, List, Sequence, Tuple
 from urllib.parse import urlparse, unquote
 
@@ -580,6 +581,54 @@ def _all_history(conn: Connection) -> Dict[PortKey, List[Tuple[datetime, str]]]:
     return history
 
 
+def _station_outage_durations(
+    station_events: Dict[str | None, List[Tuple[datetime, str]]],
+    *,
+    now: datetime,
+) -> List[float]:
+    if not station_events:
+        return []
+    timeline: List[Tuple[datetime, str | None, str]] = []
+    for port_id, events in station_events.items():
+        for ts, status in events:
+            if ts <= now:
+                timeline.append((ts, port_id, status))
+    if not timeline:
+        return []
+    timeline.sort(key=lambda item: item[0])
+
+    statuses: Dict[str | None, str | None] = {
+        port_id: None for port_id, events in station_events.items() if events
+    }
+    if not statuses:
+        return []
+
+    def station_down() -> bool:
+        if any(status is None for status in statuses.values()):
+            return False
+        return bool(statuses) and all(status in UNAVAILABLE_STATUSES for status in statuses.values())
+
+    durations: List[float] = []
+    current_down = station_down()
+    down_start: datetime | None = None
+
+    for ts, group in groupby(timeline, key=lambda item: item[0]):
+        prev_down = current_down
+        for _, port_id, status in group:
+            statuses[port_id] = status
+        current_down = station_down()
+        if prev_down and not current_down and down_start is not None:
+            durations.append((ts - down_start).total_seconds() / 60)
+            down_start = None
+        elif not prev_down and current_down:
+            down_start = ts
+
+    if current_down and down_start is not None:
+        durations.append((now - down_start).total_seconds() / 60)
+
+    return durations
+
+
 def _count_unused_chargers(
     conn: Connection,
     days: int,
@@ -1034,6 +1083,15 @@ def stats_from_db(conn: Connection, *, now: datetime | None = None) -> Dict[str,
             if start >= today:
                 charges_today += 1
     stats["charges_today"] = charges_today
+    station_histories: Dict[Tuple[str | None, str | None], Dict[str | None, List[Tuple[datetime, str]]]] = {}
+    for (loc, sta, port), events in history.items():
+        station_histories.setdefault((loc, sta), {})[port] = events
+    outage_durations: List[float] = []
+    for events in station_histories.values():
+        outage_durations.extend(_station_outage_durations(events, now=now))
+    stats["mttr_minutes"] = (
+        sum(outage_durations) / len(outage_durations) if outage_durations else 0.0
+    )
     stats["utilization"] = _utilization_summary(history, now=now)
     return stats
 
