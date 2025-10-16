@@ -352,6 +352,40 @@ const formatMinutes = (value) => {
   return `${value.toFixed(1)} min`;
 };
 
+const formatDurationMinutes = (value) => {
+  if (value === null || value === undefined) {
+    return '–';
+  }
+  const numeric = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(numeric)) {
+    return '–';
+  }
+  if (numeric <= 0) {
+    return '0 min';
+  }
+  if (numeric < 1) {
+    return '<1 min';
+  }
+  const totalMinutes = Math.round(numeric);
+  const days = Math.floor(totalMinutes / 1440);
+  const hours = Math.floor((totalMinutes % 1440) / 60);
+  const minutes = totalMinutes % 60;
+  const parts = [];
+  if (days > 0) {
+    parts.push(`${days}d`);
+  }
+  if (hours > 0) {
+    parts.push(`${hours}h`);
+  }
+  if (minutes > 0 && parts.length < 2) {
+    parts.push(`${minutes}m`);
+  }
+  if (parts.length === 0) {
+    parts.push(`${totalMinutes} min`);
+  }
+  return parts.join(' ');
+};
+
 const formatDate = (isoDate, { includeWeekday = true } = {}) => {
   if (!isoDate) {
     return '–';
@@ -1487,6 +1521,11 @@ const updateSummary = (stats, info) => {
   const avgEl = document.getElementById('summary-avg-session');
   if (avgEl) {
     avgEl.textContent = formatMinutes(stats?.avg_session_min || 0);
+  }
+
+  const mttrEl = document.getElementById('summary-mttr');
+  if (mttrEl) {
+    mttrEl.textContent = formatDurationMinutes(stats?.mttr_minutes);
   }
 
   const meta = document.getElementById('summary-meta');
