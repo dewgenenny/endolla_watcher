@@ -1846,17 +1846,17 @@ const updateHighChargingLocations = (locations) => {
         portCount,
       };
     })
-    .filter((entry) => entry.id && Number.isFinite(entry.percent) && entry.percent > 40)
+    .filter((entry) => entry.id && Number.isFinite(entry.percent) && entry.percent > 30)
     .sort((a, b) => b.percent - a.percent);
 
   if (highlighted.length === 0) {
-    highChargingNoteEl.textContent = 'No locations currently exceed the 40% charging rate threshold.';
+    highChargingNoteEl.textContent = 'No locations currently exceed the 30% charging rate threshold.';
     highChargingListEl.hidden = true;
     return;
   }
 
   highChargingNoteEl.textContent =
-    'These locations exceed 40% active charging utilization. Consider expanding capacity.';
+    'These locations exceed 30% active charging utilization. Consider expanding capacity.';
 
   highlighted.forEach((entry) => {
     const item = document.createElement('li');
