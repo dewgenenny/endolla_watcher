@@ -195,13 +195,21 @@ def test_nearby_endpoint(tmp_path, monkeypatch, db_url):
         payload = response.json()
         assert payload["limit"] == 2
         assert payload["coordinates"] == {"lat": 41.0, "lon": 2.0}
-        assert [entry["location_id"] for entry in payload["locations"]] == ["L1", "L2"]
+        assert [entry["location_id"] for entry in payload["locations"]] == ["L1"]
         first = payload["locations"][0]
-        assert first["distance_m"] <= payload["locations"][1]["distance_m"]
         assert any(port["status"] == "IN_USE" for port in first["ports"])
         assert first["charger_type"] == "both"
         assert first["max_power_kw"] == 22.0
-        second = payload["locations"][1]
+
+        response_all = client.get(
+            "/api/nearby",
+            params={"lat": 41.0, "lon": 2.0, "limit": 2, "include_motorcycle": True},
+        )
+        assert response_all.status_code == 200
+        payload_all = response_all.json()
+        assert [entry["location_id"] for entry in payload_all["locations"]] == ["L1", "L2"]
+        assert payload_all["locations"][0]["distance_m"] <= payload_all["locations"][1]["distance_m"]
+        second = payload_all["locations"][1]
         assert second["status_counts"]["AVAILABLE"] == 1
         assert second["port_count"] == 2
         assert second["charger_type"] == "motorcycle"

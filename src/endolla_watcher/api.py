@@ -544,12 +544,17 @@ async def nearby(
     lat: float = Query(..., ge=-90.0, le=90.0),
     lon: float = Query(..., ge=-180.0, le=180.0),
     limit: int = Query(3, ge=1, le=20),
+    include_motorcycle: bool = Query(False),
 ) -> Dict[str, Any]:
     settings = _require_settings()
     locations_map: Dict[str, Dict[str, Any]] = getattr(app.state, "locations", {})
 
     candidates: list[tuple[float, str, Dict[str, Any]]] = []
     for location_id, info in locations_map.items():
+        if not include_motorcycle:
+            charger_type = str(info.get("charger_type") or "").strip().lower()
+            if charger_type == "motorcycle":
+                continue
         lat_val = info.get("lat")
         lon_val = info.get("lon")
         if lat_val is None or lon_val is None:
