@@ -31,3 +31,29 @@ def test_parse_locations_includes_address_components():
     ]
     result = data.parse_locations(sample)
     assert result["L3"]["address"] == "Carrer de Mallorca, 401, 08013, Barcelona"
+
+
+def test_parse_locations_includes_vehicle_types_and_power():
+    sample = {
+        "locations": [
+            {
+                "id": "L4",
+                "latitude": 41.3,
+                "longitude": 2.2,
+                "stations": [
+                    {
+                        "id": "S1",
+                        "ports": [
+                            {"id": "P1", "power_kw": 22},
+                            {"id": "P2", "power_kw": "7.2", "notes": "MOTORCYCLE_ONLY"},
+                        ],
+                    }
+                ],
+            }
+        ]
+    }
+
+    result = data.parse_locations(sample)
+    entry = result["L4"]
+    assert entry["charger_type"] == "both"
+    assert entry["max_power_kw"] == 22.0

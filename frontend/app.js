@@ -328,6 +328,46 @@ const formatDecimal = (value, { minimumFractionDigits = 1, maximumFractionDigits
   }).format(numeric);
 };
 
+const formatPowerKw = (value) => {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  let numeric;
+  if (typeof value === 'number') {
+    numeric = value;
+  } else if (typeof value === 'string') {
+    const normalized = value.replace(',', '.');
+    numeric = Number.parseFloat(normalized);
+  } else {
+    return null;
+  }
+  if (!Number.isFinite(numeric) || numeric <= 0) {
+    return null;
+  }
+  const fractionDigits = numeric < 10 ? 1 : 0;
+  return `${new Intl.NumberFormat(undefined, {
+    minimumFractionDigits: fractionDigits,
+    maximumFractionDigits: fractionDigits,
+  }).format(numeric)} kW`;
+};
+
+const formatChargerType = (value) => {
+  if (!value) {
+    return null;
+  }
+  const normalized = String(value).trim().toLowerCase();
+  switch (normalized) {
+    case 'car':
+      return 'Car chargers';
+    case 'motorcycle':
+      return 'Motorcycle chargers';
+    case 'both':
+      return 'Car & motorcycle chargers';
+    default:
+      return null;
+  }
+};
+
 const formatPercent = (value, fractionDigits = 1) => {
   if (value === null || value === undefined) {
     return '–';
@@ -2405,6 +2445,22 @@ const renderNearMeResults = (locations) => {
       countsLine.className = 'near-me-card__meta';
       countsLine.textContent = countParts.join(' · ');
       body.appendChild(countsLine);
+    }
+
+    const chargerParts = [];
+    const chargerTypeLabel = formatChargerType(location?.charger_type);
+    if (chargerTypeLabel) {
+      chargerParts.push(chargerTypeLabel);
+    }
+    const maxPowerLabel = formatPowerKw(location?.max_power_kw);
+    if (maxPowerLabel) {
+      chargerParts.push(`Up to ${maxPowerLabel}`);
+    }
+    if (chargerParts.length > 0) {
+      const chargerLine = document.createElement('div');
+      chargerLine.className = 'near-me-card__meta near-me-card__meta--secondary';
+      chargerLine.textContent = chargerParts.join(' · ');
+      body.appendChild(chargerLine);
     }
 
     if (location?.updated) {
