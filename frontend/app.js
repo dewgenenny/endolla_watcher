@@ -51,6 +51,11 @@ const heatmapDescriptionEl = document.getElementById('heatmap-description');
 const heatmapNoteEl = document.getElementById('heatmap-note');
 const heatmapListContainer = document.getElementById('heatmap-location-list');
 const heatmapUpdatedEl = document.getElementById('heatmap-updated');
+const nearMeSection = document.getElementById('near-me');
+const nearMeLocateButton = document.getElementById('near-me-locate');
+const nearMeStatusEl = document.getElementById('near-me-status');
+const nearMeErrorEl = document.getElementById('near-me-error');
+const nearMeResultsEl = document.getElementById('near-me-results');
 
 let chargesChart;
 let dashboardController;
@@ -78,6 +83,8 @@ let heatmapMetricKey = 'occupation_utilization_pct';
 let heatmapResizeObserver;
 let heatmapResizeHandle;
 let heatmapPendingBounds;
+let nearMeRequestInFlight = false;
+let nearMeAutoRequested = false;
 
 const debugFlags = (() => {
   try {
@@ -135,6 +142,7 @@ const HEATMAP_METRICS = {
   },
 };
 const HEATMAP_DEFAULT_METRIC = 'occupation_utilization_pct';
+const NEAR_ME_DEFAULT_LIMIT = 3;
 
 const MAP_STYLE_URL = 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json';
 const MAP_DEFAULT_CENTER = [2.1734, 41.3851];
@@ -343,6 +351,22 @@ const formatRatioPercent = (value, fractionDigits = 1) => {
     return '–';
   }
   return formatPercent(numeric * 100, fractionDigits);
+};
+
+const formatDistance = (meters) => {
+  if (!Number.isFinite(meters)) {
+    return '–';
+  }
+  if (meters >= 1000) {
+    return `${formatDecimal(meters / 1000, {
+      minimumFractionDigits: 1,
+      maximumFractionDigits: 1,
+    })} km`;
+  }
+  if (meters >= 1) {
+    return `${Math.round(meters)} m`;
+  }
+  return '<1 m';
 };
 
 const formatMinutes = (value) => {
@@ -2262,6 +2286,339 @@ const detachLocationMapResizeObserver = () => {
   locationMapResizeObserver.disconnect();
   locationMapResizeObserver = undefined;
 };
+
+const formatPortStatusLabel = (status) => {
+  if (!status) {
+    return 'Unknown';
+  }
+  return String(status)
+    .trim()
+    .split(/[_\s]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(' ');
+};
+
+const getStatusBadgeClass = (status) => {
+  const classes = ['badge'];
+  if (!status) {
+    return classes.join(' ');
+  }
+  const normalized = String(status).trim().toUpperCase();
+  if (['AVAILABLE', 'OPERATIVE', 'FREE', 'LIBRE'].includes(normalized)) {
+    classes.push('badge--success');
+  } else if (['IN_USE', 'CHARGING', 'OCCUPIED', 'RESERVED'].includes(normalized)) {
+    classes.push('badge--warning');
+  } else if (
+    [
+      'OUT_OF_SERVICE',
+      'UNAVAILABLE',
+      'ERROR',
+      'FAULT',
+      'TEMPORARILY_UNAVAILABLE',
+      'MAINTENANCE',
+    ].includes(normalized)
+  ) {
+    classes.push('badge--danger');
+  }
+  return classes.join(' ');
+};
+
+const setNearMeStatus = (message) => {
+  if (nearMeStatusEl) {
+    nearMeStatusEl.textContent = message || '';
+  }
+};
+
+const clearNearMeError = () => {
+  if (nearMeErrorEl) {
+    nearMeErrorEl.textContent = '';
+    nearMeErrorEl.hidden = true;
+  }
+};
+
+const showNearMeError = (message) => {
+  if (!nearMeErrorEl) {
+    return;
+  }
+  nearMeErrorEl.textContent = message || 'Unable to load nearby chargers.';
+  nearMeErrorEl.hidden = false;
+};
+
+const setNearMeLoading = (isLoading) => {
+  if (nearMeSection) {
+    nearMeSection.setAttribute('aria-busy', isLoading ? 'true' : 'false');
+  }
+  if (nearMeLocateButton) {
+    nearMeLocateButton.disabled = Boolean(isLoading);
+  }
+};
+
+const renderNearMeResults = (locations) => {
+  if (!nearMeResultsEl) {
+    return;
+  }
+  nearMeResultsEl.innerHTML = '';
+  if (!Array.isArray(locations) || locations.length === 0) {
+    const empty = document.createElement('p');
+    empty.className = 'muted';
+    empty.textContent = 'No chargers were found near your location.';
+    nearMeResultsEl.appendChild(empty);
+    return;
+  }
+
+  locations.forEach((location) => {
+    const card = document.createElement('article');
+    card.className = 'card near-me-card';
+    const body = document.createElement('div');
+    body.className = 'card__body';
+
+    const header = document.createElement('div');
+    header.className = 'near-me-card__header';
+    const title = document.createElement('h3');
+    title.className = 'near-me-card__title';
+    title.textContent = location?.address || `Location ${location?.location_id ?? ''}`.trim();
+    header.appendChild(title);
+
+    const distanceBadge = document.createElement('span');
+    distanceBadge.className = 'badge near-me-distance';
+    distanceBadge.textContent = formatDistance(location?.distance_m);
+    header.appendChild(distanceBadge);
+    body.appendChild(header);
+
+    const idLine = document.createElement('p');
+    idLine.className = 'near-me-card__id muted';
+    idLine.textContent = `Location ${location?.location_id ?? 'unknown'}`;
+    body.appendChild(idLine);
+
+    const stationCount = Number(location?.station_count);
+    const portCount = Number(location?.port_count);
+    const countParts = [];
+    if (Number.isFinite(stationCount)) {
+      countParts.push(`${formatNumber(stationCount)} station${stationCount === 1 ? '' : 's'}`);
+    }
+    if (Number.isFinite(portCount)) {
+      countParts.push(`${formatNumber(portCount)} port${portCount === 1 ? '' : 's'}`);
+    }
+    if (countParts.length > 0) {
+      const countsLine = document.createElement('div');
+      countsLine.className = 'near-me-card__meta';
+      countsLine.textContent = countParts.join(' · ');
+      body.appendChild(countsLine);
+    }
+
+    if (location?.updated) {
+      const updatedLine = document.createElement('p');
+      updatedLine.className = 'near-me-card__updated muted';
+      updatedLine.textContent = `Updated ${formatDateTime(location.updated, {
+        includeWeekday: false,
+      })}`;
+      body.appendChild(updatedLine);
+    }
+
+    const ports = Array.isArray(location?.ports) ? location.ports : [];
+    if (ports.length > 0) {
+      const list = document.createElement('ul');
+      list.className = 'near-me-port-list';
+      ports.forEach((port) => {
+        const item = document.createElement('li');
+        item.className = 'near-me-port';
+
+        const label = document.createElement('span');
+        label.className = 'near-me-port__id';
+        const parts = [];
+        if (port?.station_id) {
+          parts.push(`Station ${port.station_id}`);
+        }
+        if (port?.port_id) {
+          parts.push(`Port ${port.port_id}`);
+        }
+        label.textContent = parts.join(' · ') || 'Charger';
+        item.appendChild(label);
+
+        const statusBadge = document.createElement('span');
+        statusBadge.className = `${getStatusBadgeClass(port?.status)} near-me-port__status`;
+        statusBadge.textContent = formatPortStatusLabel(port?.status);
+        item.appendChild(statusBadge);
+
+        if (port?.last_updated) {
+          const updated = document.createElement('span');
+          updated.className = 'near-me-port__updated muted';
+          updated.textContent = `Updated ${formatDateTime(port.last_updated, {
+            includeWeekday: false,
+          })}`;
+          item.appendChild(updated);
+        }
+
+        list.appendChild(item);
+      });
+      body.appendChild(list);
+    } else {
+      const emptyPorts = document.createElement('p');
+      emptyPorts.className = 'muted';
+      emptyPorts.textContent = 'No telemetry is available for this location yet.';
+      body.appendChild(emptyPorts);
+    }
+
+    card.appendChild(body);
+    nearMeResultsEl.appendChild(card);
+  });
+};
+
+const geolocationErrorMessage = (error) => {
+  if (!error || typeof error.code !== 'number') {
+    return 'Unable to determine your location.';
+  }
+  switch (error.code) {
+    case error.PERMISSION_DENIED:
+      return 'Location access was denied. Enable location permissions to find chargers near you.';
+    case error.POSITION_UNAVAILABLE:
+      return 'We could not determine your location. Try again in an area with better signal.';
+    case error.TIMEOUT:
+      return 'Timed out while waiting for your location. Please try again.';
+    default:
+      return 'Unable to determine your location.';
+  }
+};
+
+const requestUserLocation = () =>
+  new Promise((resolve, reject) => {
+    if (!navigator?.geolocation) {
+      reject(new Error('Geolocation is not supported by this browser.'));
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        resolve(position.coords);
+      },
+      (error) => {
+        reject(error);
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 15000,
+        maximumAge: 0,
+      }
+    );
+  });
+
+const fetchNearbyLocations = async (lat, lon, limit = NEAR_ME_DEFAULT_LIMIT) => {
+  const params = new URLSearchParams({
+    lat: String(lat),
+    lon: String(lon),
+    limit: String(limit),
+  });
+  const response = await fetch(`${API_BASE}/nearby?${params.toString()}`, {
+    headers: { Accept: 'application/json' },
+  });
+  if (!response.ok) {
+    throw new Error(`Request failed with status ${response.status}`);
+  }
+  return response.json();
+};
+
+const requestNearbyChargers = async () => {
+  if (!nearMeSection || nearMeRequestInFlight) {
+    return;
+  }
+  if (!navigator?.geolocation) {
+    showNearMeError('Geolocation is not supported by your browser.');
+    setNearMeStatus('Unable to access location services.');
+    if (nearMeLocateButton) {
+      nearMeLocateButton.disabled = true;
+    }
+    return;
+  }
+
+  nearMeRequestInFlight = true;
+  setNearMeLoading(true);
+  clearNearMeError();
+  setNearMeStatus('Requesting your location…');
+
+  try {
+    const coords = await requestUserLocation();
+    setNearMeStatus('Searching for chargers near you…');
+    const payload = await fetchNearbyLocations(coords.latitude, coords.longitude);
+    const locations = Array.isArray(payload?.locations) ? payload.locations : [];
+    renderNearMeResults(locations);
+    if (locations.length > 0) {
+      const farthest = locations[locations.length - 1];
+      const distance = formatDistance(farthest?.distance_m);
+      const countText =
+        locations.length === 1
+          ? 'closest charger location'
+          : `closest ${locations.length} charger locations`;
+      setNearMeStatus(`Showing the ${countText} within ${distance} of you.`);
+    } else {
+      setNearMeStatus('No chargers were found near your location.');
+    }
+  } catch (error) {
+    console.error('Failed to load nearby chargers', error);
+    if (error?.code !== undefined) {
+      showNearMeError(geolocationErrorMessage(error));
+      setNearMeStatus('We need your location to look for nearby chargers.');
+    } else {
+      showNearMeError('Unable to fetch nearby chargers. Please try again.');
+      setNearMeStatus('Fetching nearby chargers failed.');
+    }
+  } finally {
+    setNearMeLoading(false);
+    nearMeRequestInFlight = false;
+  }
+};
+
+const setupNearMePage = () => {
+  if (!nearMeSection) {
+    return;
+  }
+
+  setNearMeStatus('Share your location to find chargers near you.');
+
+  if (!navigator?.geolocation) {
+    showNearMeError('Geolocation is not supported by your browser.');
+    setNearMeStatus('Location services are unavailable.');
+    if (nearMeLocateButton) {
+      nearMeLocateButton.disabled = true;
+    }
+    return;
+  }
+
+  if (nearMeLocateButton && !nearMeLocateButton.hasAttribute('data-initialised')) {
+    nearMeLocateButton.setAttribute('data-initialised', 'true');
+    nearMeLocateButton.addEventListener('click', () => {
+      requestNearbyChargers();
+    });
+  }
+
+  if (navigator.permissions?.query) {
+    navigator.permissions
+      .query({ name: 'geolocation' })
+      .then((permissionStatus) => {
+        if (permissionStatus.state === 'granted' && !nearMeAutoRequested) {
+          nearMeAutoRequested = true;
+          requestNearbyChargers();
+        } else if (permissionStatus.state === 'denied') {
+          setNearMeStatus('Location access is blocked. Update your browser settings to continue.');
+        }
+        const handlePermissionChange = () => {
+          if (permissionStatus.state === 'granted' && !nearMeAutoRequested) {
+            nearMeAutoRequested = true;
+            requestNearbyChargers();
+          }
+        };
+        if (typeof permissionStatus.addEventListener === 'function') {
+          permissionStatus.addEventListener('change', handlePermissionChange);
+        } else if ('onchange' in permissionStatus) {
+          permissionStatus.onchange = handlePermissionChange;
+        }
+      })
+      .catch(() => {
+        // Ignore permission query failures (unsupported browsers).
+      });
+  }
+};
+
+setupNearMePage();
 
 const applyPendingLocationMarker = () => {
   if (!locationMap || !locationMapReady || !locationMapPendingCoords) {
