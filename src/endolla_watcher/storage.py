@@ -570,6 +570,49 @@ def _latest_records(conn: Connection) -> List[Dict[str, Any]]:
     return results
 
 
+def latest_status_by_locations(
+    conn: Connection, location_ids: Sequence[str]
+) -> Dict[str, List[Dict[str, Any]]]:
+    """Return the latest port status entries grouped by location."""
+
+    filtered_ids = [str(loc) for loc in location_ids if loc is not None]
+    if not filtered_ids:
+        return {}
+
+    placeholders = ", ".join(["%s"] * len(filtered_ids))
+    query = f"""
+        SELECT ps.location_id, ps.station_id, ps.port_id, ps.status, ps.last_updated
+        FROM port_status ps
+        JOIN (
+            SELECT location_id, station_id, port_id, MAX(ts) AS max_ts
+            FROM port_status
+            WHERE location_id IN ({placeholders})
+            GROUP BY location_id, station_id, port_id
+        ) latest
+        ON ps.location_id <=> latest.location_id
+        AND ps.station_id <=> latest.station_id
+        AND ps.port_id <=> latest.port_id
+        AND ps.ts = latest.max_ts
+        WHERE ps.location_id IN ({placeholders})
+    """
+
+    grouped: Dict[str, List[Dict[str, Any]]] = {}
+    params = tuple(filtered_ids) * 2
+    with _with_cursor(conn) as cur:
+        cur.execute(query, params)
+        for loc, sta, port, status, last_updated in cur.fetchall():
+            grouped.setdefault(str(loc), []).append(
+                {
+                    "location_id": loc,
+                    "station_id": sta,
+                    "port_id": port,
+                    "status": status,
+                    "last_updated": last_updated,
+                }
+            )
+    return grouped
+
+
 def _all_history(conn: Connection) -> Dict[PortKey, List[Tuple[datetime, str]]]:
     history: Dict[PortKey, List[Tuple[datetime, str]]] = {}
     with _with_cursor(conn) as cur:

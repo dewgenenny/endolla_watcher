@@ -113,6 +113,71 @@ def test_location_details_endpoint(tmp_path, monkeypatch, auto_fetch, db_url):
         assert len(payload["usage_week"]["timeline"]) == 7
 
 
+def test_nearby_endpoint(tmp_path, monkeypatch, db_url):
+    locations = tmp_path / "locations.json"
+    locations.write_text(
+        json.dumps(
+            {
+                "locations": [
+                    {"id": "L1", "latitude": 41.0, "longitude": 2.0, "address": "Plaça 1"},
+                    {"id": "L2", "latitude": 41.01, "longitude": 2.01},
+                    {"id": "L3", "latitude": 41.2, "longitude": 2.2},
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setenv("ENDOLLA_DB_URL", db_url)
+    monkeypatch.setenv("ENDOLLA_AUTO_FETCH", "0")
+    monkeypatch.setenv("ENDOLLA_LOCATIONS_FILE", str(locations))
+
+    _seed_database(db_url)
+
+    conn = storage.connect(db_url)
+    try:
+        now = datetime.now(timezone.utc)
+        storage.save_snapshot(
+            conn,
+            [
+                {
+                    "location_id": "L2",
+                    "station_id": "S2",
+                    "port_id": "P2",
+                    "status": "AVAILABLE",
+                    "last_updated": now.isoformat(),
+                },
+                {
+                    "location_id": "L2",
+                    "station_id": "S2",
+                    "port_id": "P3",
+                    "status": "OUT_OF_SERVICE",
+                    "last_updated": now.isoformat(),
+                },
+            ],
+            ts=now,
+        )
+    finally:
+        conn.close()
+
+    module = importlib.import_module("endolla_watcher.api")
+    api = importlib.reload(module)
+
+    with TestClient(api.app) as client:
+        response = client.get("/api/nearby", params={"lat": 41.0, "lon": 2.0, "limit": 2})
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["limit"] == 2
+        assert payload["coordinates"] == {"lat": 41.0, "lon": 2.0}
+        assert [entry["location_id"] for entry in payload["locations"]] == ["L1", "L2"]
+        first = payload["locations"][0]
+        assert first["distance_m"] <= payload["locations"][1]["distance_m"]
+        assert any(port["status"] == "IN_USE" for port in first["ports"])
+        second = payload["locations"][1]
+        assert second["status_counts"]["AVAILABLE"] == 1
+        assert second["port_count"] == 2
+
+
 def test_dashboard_cache(monkeypatch, tmp_path, db_url):
     locations = tmp_path / "locations.json"
     locations.write_text(

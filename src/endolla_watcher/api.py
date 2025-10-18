@@ -4,8 +4,10 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+from collections import Counter
 from dataclasses import asdict, dataclass
 from datetime import datetime
+from math import atan2, cos, radians, sin, sqrt
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -22,6 +24,7 @@ from . import storage
 logger = logging.getLogger(__name__)
 
 DASHBOARD_WARM_INTERVAL = 15 * 60
+EARTH_RADIUS_M = 6_371_000
 
 
 @dataclass
@@ -38,6 +41,32 @@ class Settings:
     debug: bool
     dashboard_cache_ttl: int
     dashboard_cache_presets: list[tuple[int, str]]
+
+
+def _haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Return the great-circle distance between two points in meters."""
+
+    phi1, phi2 = radians(lat1), radians(lat2)
+    d_phi = radians(lat2 - lat1)
+    d_lambda = radians(lon2 - lon1)
+    a = sin(d_phi / 2) ** 2 + cos(phi1) * cos(phi2) * sin(d_lambda / 2) ** 2
+    c = 2 * atan2(sqrt(a), sqrt(1 - a))
+    return EARTH_RADIUS_M * c
+
+
+def _normalise_last_updated(value: Any) -> tuple[str | None, datetime | None]:
+    if isinstance(value, datetime):
+        return value.isoformat(), value
+    if isinstance(value, str):
+        cleaned = value.strip()
+        if cleaned.endswith("Z") and not cleaned.endswith("+00:00"):
+            cleaned = cleaned[:-1] + "+00:00"
+        try:
+            parsed = datetime.fromisoformat(cleaned)
+        except ValueError:
+            return value, None
+        return value, parsed
+    return None, None
 
 
 def _parse_bool(value: Optional[str], default: bool) -> bool:
@@ -500,6 +529,115 @@ async def location_details(location_id: str) -> Dict[str, Any]:
         if "address" not in details:
             details["address"] = None
     return details
+
+
+@app.get("/api/nearby")
+async def nearby(
+    lat: float = Query(..., ge=-90.0, le=90.0),
+    lon: float = Query(..., ge=-180.0, le=180.0),
+    limit: int = Query(3, ge=1, le=20),
+) -> Dict[str, Any]:
+    settings = _require_settings()
+    locations_map: Dict[str, Dict[str, float]] = getattr(app.state, "locations", {})
+
+    candidates: list[tuple[float, str, Dict[str, Any]]] = []
+    for location_id, info in locations_map.items():
+        lat_val = info.get("lat")
+        lon_val = info.get("lon")
+        if lat_val is None or lon_val is None:
+            continue
+        try:
+            lat_num = float(lat_val)
+            lon_num = float(lon_val)
+        except (TypeError, ValueError):
+            continue
+        distance = _haversine_distance(lat, lon, lat_num, lon_num)
+        candidates.append((distance, str(location_id), info))
+
+    candidates.sort(key=lambda item: item[0])
+    top_candidates = candidates[:limit]
+    selected_ids = [location_id for _, location_id, _ in top_candidates]
+
+    if not top_candidates:
+        return {
+            "coordinates": {"lat": lat, "lon": lon},
+            "limit": limit,
+            "locations": [],
+        }
+
+    def _load_statuses() -> Dict[str, list[Dict[str, Any]]]:
+        conn = _connect_db(settings)
+        try:
+            return storage.latest_status_by_locations(conn, selected_ids)
+        finally:
+            conn.close()
+
+    status_lookup = await asyncio.to_thread(_load_statuses)
+
+    nearby_locations: list[Dict[str, Any]] = []
+    for distance, location_id, info in top_candidates:
+        port_entries: list[Dict[str, Any]] = []
+        status_counts: Counter[str] = Counter()
+        updated_iso: str | None = None
+        updated_dt: datetime | None = None
+        station_ids: set[str] = set()
+
+        for entry in status_lookup.get(location_id, []):
+            station_id = entry.get("station_id")
+            port_id = entry.get("port_id")
+            status = entry.get("status")
+            last_updated_iso, last_updated_dt = _normalise_last_updated(
+                entry.get("last_updated")
+            )
+            if status:
+                status_counts[str(status)] += 1
+            if station_id is not None:
+                station_ids.add(str(station_id))
+            if last_updated_dt is not None:
+                if updated_dt is None or last_updated_dt > updated_dt:
+                    updated_dt = last_updated_dt
+                    updated_iso = last_updated_iso or last_updated_dt.isoformat()
+            elif last_updated_iso and updated_iso is None:
+                updated_iso = last_updated_iso
+
+            port_entries.append(
+                {
+                    "station_id": station_id,
+                    "port_id": port_id,
+                    "status": status,
+                    "last_updated": last_updated_iso,
+                }
+            )
+
+        port_entries.sort(
+            key=lambda item: (
+                "" if item.get("station_id") is None else str(item.get("station_id")),
+                "" if item.get("port_id") is None else str(item.get("port_id")),
+            )
+        )
+
+        nearby_locations.append(
+            {
+                "location_id": location_id,
+                "distance_m": distance,
+                "coordinates": {
+                    "lat": info.get("lat"),
+                    "lon": info.get("lon"),
+                },
+                "address": info.get("address"),
+                "port_count": len(port_entries),
+                "station_count": len(station_ids),
+                "status_counts": dict(status_counts),
+                "ports": port_entries,
+                "updated": updated_iso,
+            }
+        )
+
+    return {
+        "coordinates": {"lat": lat, "lon": lon},
+        "limit": limit,
+        "locations": nearby_locations,
+    }
 
 
 @app.get("/api/locations")

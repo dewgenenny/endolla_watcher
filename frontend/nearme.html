@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
-  <title>Problematic Chargers &ndash; Endolla Watcher</title>
+  <title>Near Me &ndash; Endolla Watcher</title>
   <!-- Google tag (gtag.js) -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-ZRHB04BPT7"></script>
   <script>
@@ -35,8 +35,8 @@
           <a href="index.html" class="navbar__link">Dashboard</a>
           <a href="heatmap.html" class="navbar__link">Heatmap</a>
           <a href="locations.html" class="navbar__link">Locations</a>
-          <a href="nearme.html" class="navbar__link">Near me</a>
-          <a href="problematic.html" class="navbar__link" aria-current="page">Problematic</a>
+          <a href="nearme.html" class="navbar__link" aria-current="page">Near me</a>
+          <a href="problematic.html" class="navbar__link">Problematic</a>
           <a href="about.html" class="navbar__link">About</a>
         </div>
       </nav>
@@ -44,39 +44,24 @@
   </header>
   <main class="page-main">
     <div class="container">
-      <section class="section problematic-intro">
-        <h2>Chargers Requiring Attention</h2>
-        <p class="muted">Latest stations and ports flagged by the automated rules.</p>
-      </section>
-
-      <section class="section rules">
-        <h2>Rule Summary</h2>
-        <ul id="rule-summary" class="rule-list"></ul>
-      </section>
-
-      <section class="section high-charging">
-        <h2>Locations needing additional charging stations</h2>
-        <p class="muted" id="high-charging-note">Loading utilization highlights…</p>
-        <ul id="high-charging-list" class="high-charging-list"></ul>
-      </section>
-
-      <section class="section problematic" aria-live="polite">
-        <h2>Problematic Chargers</h2>
-        <p class="muted" id="problematic-count">Loading…</p>
-        <div class="table-scroll">
-          <table aria-describedby="problematic-count">
-            <thead>
-              <tr>
-                <th scope="col">Location</th>
-                <th scope="col">Station</th>
-                <th scope="col">Port</th>
-                <th scope="col">Status</th>
-                <th scope="col">Reason</th>
-              </tr>
-            </thead>
-            <tbody id="problematic-table"></tbody>
-          </table>
+      <section class="section" id="near-me" aria-labelledby="near-me-heading">
+        <div class="section-header">
+          <div class="section-title">
+            <h2 id="near-me-heading">Chargers near you</h2>
+            <p class="muted near-me-status" id="near-me-status">Share your location to find nearby chargers.</p>
+          </div>
+          <div class="near-me-actions">
+            <button type="button" class="button button--primary" id="near-me-locate">
+              <span aria-hidden="true">📍</span>
+              <span>Find chargers near me</span>
+            </button>
+          </div>
         </div>
+        <div id="near-me-error" class="near-me-error" role="alert" hidden></div>
+        <div id="near-me-results" class="near-me-results" aria-live="polite"></div>
+        <p class="muted near-me-footnote">
+          Your coordinates never leave your browser. We only use them to calculate distances to chargers.
+        </p>
       </section>
     </div>
   </main>

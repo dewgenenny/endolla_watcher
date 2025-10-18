@@ -229,6 +229,30 @@ small, .muted { color: var(--text-3); font-size: var(--font-size-0); }
 .button--ghost { background: transparent; border: 1px solid var(--stroke-1); }
 .button--danger { --btn-bg: linear-gradient(180deg, rgba(251,113,133,.2), transparent), var(--danger); color: #fff; border: none; }
 
+/* Near me */
+.near-me-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; margin-top: var(--space-3); }
+.near-me-status { color: var(--text-2); }
+.near-me-error {
+  margin-top: var(--space-3);
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  border: 1px solid color-mix(in oklab, var(--danger) 40%, transparent);
+  background: color-mix(in oklab, var(--danger) 12%, transparent);
+  color: var(--danger);
+}
+.near-me-results { margin-top: var(--space-4); display: grid; gap: var(--space-3); }
+.near-me-card__header { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: baseline; justify-content: space-between; }
+.near-me-card__title { margin: 0; font-size: 1.05rem; }
+.near-me-card__id { margin: var(--space-1) 0 0; color: var(--text-3); }
+.near-me-card__meta { margin-top: var(--space-2); color: var(--text-2); }
+.near-me-card__updated { margin-top: var(--space-2); color: var(--text-3); }
+.near-me-distance { font-weight: 600; }
+.near-me-port-list { list-style: none; padding: 0; margin: var(--space-3) 0 0; display: grid; gap: var(--space-2); }
+.near-me-port { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: baseline; }
+.near-me-port__id { font-weight: 600; }
+.near-me-port__status { display: inline-flex; align-items: center; gap: 6px; }
+.near-me-port__updated { color: var(--text-3); }
+
 /* Inputs */
 .input, .select, .textarea {
   width: 100%;
