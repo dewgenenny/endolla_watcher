@@ -56,6 +56,7 @@ const nearMeLocateButton = document.getElementById('near-me-locate');
 const nearMeStatusEl = document.getElementById('near-me-status');
 const nearMeErrorEl = document.getElementById('near-me-error');
 const nearMeResultsEl = document.getElementById('near-me-results');
+const nearMeIncludeMotorcycleInput = document.getElementById('near-me-include-motorcycle');
 
 let chargesChart;
 let dashboardController;
@@ -2558,12 +2559,20 @@ const requestUserLocation = () =>
     );
   });
 
-const fetchNearbyLocations = async (lat, lon, limit = NEAR_ME_DEFAULT_LIMIT) => {
+const fetchNearbyLocations = async (
+  lat,
+  lon,
+  limit = NEAR_ME_DEFAULT_LIMIT,
+  includeMotorcycle = false,
+) => {
   const params = new URLSearchParams({
     lat: String(lat),
     lon: String(lon),
     limit: String(limit),
   });
+  if (includeMotorcycle) {
+    params.set('include_motorcycle', '1');
+  }
   const response = await fetch(`${API_BASE}/nearby?${params.toString()}`, {
     headers: { Accept: 'application/json' },
   });
@@ -2594,7 +2603,13 @@ const requestNearbyChargers = async () => {
   try {
     const coords = await requestUserLocation();
     setNearMeStatus('Searching for chargers near you…');
-    const payload = await fetchNearbyLocations(coords.latitude, coords.longitude);
+    const includeMotorcycle = Boolean(nearMeIncludeMotorcycleInput?.checked);
+    const payload = await fetchNearbyLocations(
+      coords.latitude,
+      coords.longitude,
+      NEAR_ME_DEFAULT_LIMIT,
+      includeMotorcycle,
+    );
     const locations = Array.isArray(payload?.locations) ? payload.locations : [];
     renderNearMeResults(locations);
     if (locations.length > 0) {
@@ -2643,6 +2658,18 @@ const setupNearMePage = () => {
     nearMeLocateButton.setAttribute('data-initialised', 'true');
     nearMeLocateButton.addEventListener('click', () => {
       requestNearbyChargers();
+    });
+  }
+
+  if (
+    nearMeIncludeMotorcycleInput &&
+    !nearMeIncludeMotorcycleInput.hasAttribute('data-initialised')
+  ) {
+    nearMeIncludeMotorcycleInput.setAttribute('data-initialised', 'true');
+    nearMeIncludeMotorcycleInput.addEventListener('change', () => {
+      if (!nearMeRequestInFlight) {
+        requestNearbyChargers();
+      }
     });
   }
 
