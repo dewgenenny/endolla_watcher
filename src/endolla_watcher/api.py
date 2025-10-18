@@ -197,7 +197,7 @@ app.add_middleware(
 )
 
 
-async def _load_locations(settings: Settings) -> Dict[str, Dict[str, float]]:
+async def _load_locations(settings: Settings) -> Dict[str, Dict[str, Any]]:
     try:
         return await asyncio.to_thread(fetch_locations, settings.location_file)
     except Exception:  # pragma: no cover - defensive logging
@@ -290,7 +290,7 @@ async def _warm_dashboard_cache(settings: Settings) -> None:
         return
 
     lock: asyncio.Lock | None = getattr(app.state, "dashboard_cache_lock", None)
-    locations: Dict[str, Dict[str, float]] = getattr(app.state, "locations", {})
+    locations: Dict[str, Dict[str, Any]] = getattr(app.state, "locations", {})
 
     presets = _cache_presets(settings)
     version = getattr(app.state, "dashboard_version", 0)
@@ -335,7 +335,7 @@ async def _dashboard_warm_loop(settings: Settings, interval: int) -> None:
 
 def _build_dashboard(
     settings: Settings,
-    locations: Dict[str, Dict[str, float]],
+    locations: Dict[str, Dict[str, Any]],
     daily_days: int,
     granularity: str,
 ) -> Dict[str, Any]:
@@ -443,7 +443,7 @@ async def dashboard(
     granularity: str = Query("day"),
 ) -> Dict[str, Any]:
     settings = _require_settings()
-    locations: Dict[str, Dict[str, float]] = getattr(app.state, "locations", {})
+    locations: Dict[str, Dict[str, Any]] = getattr(app.state, "locations", {})
     granularity_normalized = granularity.lower()
     if granularity_normalized not in {"day", "hour"}:
         raise HTTPException(status_code=422, detail="Unsupported granularity")
@@ -495,7 +495,7 @@ async def charger_details(location_id: str, station_id: str) -> Dict[str, Any]:
 @app.get("/api/locations/{location_id}")
 async def location_details(location_id: str) -> Dict[str, Any]:
     settings = _require_settings()
-    locations: Dict[str, Dict[str, float]] = getattr(app.state, "locations", {})
+    locations: Dict[str, Dict[str, Any]] = getattr(app.state, "locations", {})
 
     def _load_location() -> Dict[str, Any] | None:
         conn = _connect_db(settings)
@@ -524,6 +524,14 @@ async def location_details(location_id: str) -> Dict[str, Any]:
             details["address"] = address
         elif "address" not in details:
             details["address"] = None
+        if "charger_type" not in details:
+            charger_type = coords.get("charger_type")
+            if charger_type is not None:
+                details["charger_type"] = charger_type
+        if "max_power_kw" not in details:
+            max_power = coords.get("max_power_kw")
+            if max_power is not None:
+                details["max_power_kw"] = max_power
     else:
         details["coordinates"] = None
         if "address" not in details:
@@ -538,7 +546,7 @@ async def nearby(
     limit: int = Query(3, ge=1, le=20),
 ) -> Dict[str, Any]:
     settings = _require_settings()
-    locations_map: Dict[str, Dict[str, float]] = getattr(app.state, "locations", {})
+    locations_map: Dict[str, Dict[str, Any]] = getattr(app.state, "locations", {})
 
     candidates: list[tuple[float, str, Dict[str, Any]]] = []
     for location_id, info in locations_map.items():
@@ -630,6 +638,8 @@ async def nearby(
                 "status_counts": dict(status_counts),
                 "ports": port_entries,
                 "updated": updated_iso,
+                "charger_type": info.get("charger_type"),
+                "max_power_kw": info.get("max_power_kw"),
             }
         )
 
@@ -641,7 +651,7 @@ async def nearby(
 
 
 @app.get("/api/locations")
-async def locations() -> Dict[str, Dict[str, float]]:
+async def locations() -> Dict[str, Dict[str, Any]]:
     return getattr(app.state, "locations", {})
 
 

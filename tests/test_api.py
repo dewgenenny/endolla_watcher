@@ -119,8 +119,34 @@ def test_nearby_endpoint(tmp_path, monkeypatch, db_url):
         json.dumps(
             {
                 "locations": [
-                    {"id": "L1", "latitude": 41.0, "longitude": 2.0, "address": "Plaça 1"},
-                    {"id": "L2", "latitude": 41.01, "longitude": 2.01},
+                    {
+                        "id": "L1",
+                        "latitude": 41.0,
+                        "longitude": 2.0,
+                        "address": "Plaça 1",
+                        "stations": [
+                            {
+                                "id": "S1",
+                                "ports": [
+                                    {"id": "P1", "power_kw": 22},
+                                    {"id": "P2", "power_kw": 7.2, "notes": "MOTORCYCLE_ONLY"},
+                                ],
+                            }
+                        ],
+                    },
+                    {
+                        "id": "L2",
+                        "latitude": 41.01,
+                        "longitude": 2.01,
+                        "stations": [
+                            {
+                                "id": "S2",
+                                "ports": [
+                                    {"id": "P1", "power_kw": 3.6, "notes": "MOTORCYCLE_ONLY"},
+                                ],
+                            }
+                        ],
+                    },
                     {"id": "L3", "latitude": 41.2, "longitude": 2.2},
                 ]
             }
@@ -173,9 +199,13 @@ def test_nearby_endpoint(tmp_path, monkeypatch, db_url):
         first = payload["locations"][0]
         assert first["distance_m"] <= payload["locations"][1]["distance_m"]
         assert any(port["status"] == "IN_USE" for port in first["ports"])
+        assert first["charger_type"] == "both"
+        assert first["max_power_kw"] == 22.0
         second = payload["locations"][1]
         assert second["status_counts"]["AVAILABLE"] == 1
         assert second["port_count"] == 2
+        assert second["charger_type"] == "motorcycle"
+        assert second["max_power_kw"] == 3.6
 
 
 def test_dashboard_cache(monkeypatch, tmp_path, db_url):

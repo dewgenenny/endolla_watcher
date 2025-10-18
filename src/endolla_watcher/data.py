@@ -1,7 +1,7 @@
 import json
 import logging
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, Iterable, List, Sequence, Set
 import requests
 
 _ADDRESS_KEYWORDS = (
@@ -93,6 +93,24 @@ LOCATION_URL = (
 )
 
 
+_MOTORCYCLE_KEYWORDS: Sequence[str] = (
+    "motorcycle",
+    "motorbike",
+    "motocic",
+    "moped",
+    "scooter",
+    "moto",
+)
+
+_CAR_KEYWORDS: Sequence[str] = (
+    "car",
+    "cotxe",
+    "coche",
+    "automobil",
+    "vehicle",
+)
+
+
 def fetch_data(path: Path | None = None) -> Dict[str, Any]:
     """Fetch dataset either from local file or remote endpoint."""
     if path:
@@ -108,7 +126,7 @@ def fetch_data(path: Path | None = None) -> Dict[str, Any]:
     return resp.json()
 
 
-def fetch_locations(path: Path | None = None) -> Dict[str, Dict[str, float]]:
+def fetch_locations(path: Path | None = None) -> Dict[str, Dict[str, Any]]:
     """Fetch charger location data from file or remote."""
     if path:
         logger.debug("Loading location data from %s", path)
@@ -122,8 +140,8 @@ def fetch_locations(path: Path | None = None) -> Dict[str, Dict[str, float]]:
     return parse_locations(data)
 
 
-def parse_locations(data: Any) -> Dict[str, Dict[str, float]]:
-    """Return a mapping of location_id -> {'lat': float, 'lon': float}."""
+def parse_locations(data: Any) -> Dict[str, Dict[str, Any]]:
+    """Return a mapping of location_id -> metadata including coordinates."""
     items: List[Dict[str, Any]]
     if isinstance(data, dict):
         items = data.get("data") or data.get("locations") or data.get("records") or []
@@ -131,7 +149,7 @@ def parse_locations(data: Any) -> Dict[str, Dict[str, float]]:
         items = data
     else:
         items = []
-    result: Dict[str, Dict[str, float]] = {}
+    result: Dict[str, Dict[str, Any]] = {}
     for it in items:
         loc_id = (
             it.get("location_id")
@@ -164,15 +182,135 @@ def parse_locations(data: Any) -> Dict[str, Dict[str, float]]:
         if loc_id is None or lat is None or lon is None:
             continue
         try:
-            record = {"lat": float(lat), "lon": float(lon)}
+            record: Dict[str, Any] = {"lat": float(lat), "lon": float(lon)}
             address = _extract_location_address(it)
             if address:
                 record["address"] = address
+
+            vehicle_types = _summarise_vehicle_types(it)
+            if vehicle_types:
+                record["charger_type"] = _summarise_location_vehicle_type(vehicle_types)
+
+            max_power = _max_port_power_kw(it)
+            if max_power is not None:
+                record["max_power_kw"] = max_power
             result[str(loc_id)] = record
         except (TypeError, ValueError):
             logger.debug("Skipping invalid location entry: %s", it)
     logger.debug("Parsed %d location coordinates", len(result))
     return result
+
+
+def _iter_text_values(entry: Dict[str, Any], keys: Iterable[str]) -> Iterable[str]:
+    for key in keys:
+        value = entry.get(key)
+        if value is None:
+            continue
+        if isinstance(value, str):
+            yield value
+        elif isinstance(value, (list, tuple, set)):
+            for item in value:
+                if item is None:
+                    continue
+                yield str(item)
+
+
+def _classify_vehicle_mentions(texts: Iterable[str]) -> Set[str]:
+    mentions: Set[str] = set()
+    for text in texts:
+        cleaned = text.strip().lower()
+        if not cleaned:
+            continue
+        if any(keyword in cleaned for keyword in _MOTORCYCLE_KEYWORDS):
+            mentions.add("motorcycle")
+        if any(keyword in cleaned for keyword in _CAR_KEYWORDS):
+            mentions.add("car")
+    return mentions
+
+
+def _summarise_vehicle_types(location: Dict[str, Any]) -> Set[str]:
+    vehicle_types: Set[str] = set()
+    stations = location.get("stations")
+    if not isinstance(stations, list):
+        return vehicle_types
+
+    for station in stations:
+        if not isinstance(station, dict):
+            continue
+        ports = station.get("ports")
+        if not isinstance(ports, list):
+            continue
+        for port in ports:
+            if not isinstance(port, dict):
+                continue
+            texts = list(_iter_text_values(port, ("notes", "label", "description")))
+            mentions = _classify_vehicle_mentions(texts)
+            if not mentions:
+                # Default to car chargers if no explicit classification is provided.
+                mentions = {"car"}
+            vehicle_types.update(mentions)
+    return vehicle_types
+
+
+def _summarise_location_vehicle_type(vehicle_types: Set[str]) -> str:
+    if not vehicle_types:
+        return "unknown"
+    if vehicle_types == {"car"}:
+        return "car"
+    if vehicle_types == {"motorcycle"}:
+        return "motorcycle"
+    return "both"
+
+
+def _extract_power_kw(port: Dict[str, Any]) -> float | None:
+    power_candidates = (
+        port.get("power_kw"),
+        port.get("powerKW"),
+        port.get("power"),
+        port.get("POWER_KW"),
+    )
+    for raw_value in power_candidates:
+        if raw_value is None:
+            continue
+        if isinstance(raw_value, (int, float)):
+            value = float(raw_value)
+        elif isinstance(raw_value, str):
+            cleaned = raw_value.strip().replace(",", ".")
+            if not cleaned:
+                continue
+            try:
+                value = float(cleaned)
+            except ValueError:
+                continue
+        else:
+            continue
+        if value <= 0:
+            continue
+        return value
+    return None
+
+
+def _max_port_power_kw(location: Dict[str, Any]) -> float | None:
+    stations = location.get("stations")
+    if not isinstance(stations, list):
+        return None
+
+    max_power: float | None = None
+    for station in stations:
+        if not isinstance(station, dict):
+            continue
+        ports = station.get("ports")
+        if not isinstance(ports, list):
+            continue
+        for port in ports:
+            if not isinstance(port, dict):
+                continue
+            value = _extract_power_kw(port)
+            if value is None:
+                continue
+            if max_power is None or value > max_power:
+                max_power = value
+    return max_power
 
 
 def parse_usage(data: Dict[str, Any]) -> List[Dict[str, Any]]:
