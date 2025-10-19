@@ -1165,6 +1165,7 @@ def location_usage(
     week_totals = _empty_totals()
     station_ids: set[str | None] = set()
     port_ids: set[Tuple[str | None, str | None]] = set()
+    station_rollups: Dict[str, Dict[str, Any]] = {}
 
     for (station_id, port_id), events in history.items():
         port_ids.add((station_id, port_id))
@@ -1176,6 +1177,31 @@ def location_usage(
         if day_metrics is not None:
             _accumulate_totals(day_totals, day_metrics)
 
+        if station_id is not None:
+            station_key = str(station_id)
+            rollup = station_rollups.get(station_key)
+            if rollup is None:
+                rollup = {
+                    "station_id": station_key,
+                    "port_ids": set(),
+                    "day_totals": _empty_totals(),
+                    "week_totals": _empty_totals(),
+                    "last_updated": None,
+                }
+                station_rollups[station_key] = rollup
+            if port_id is not None:
+                rollup["port_ids"].add(str(port_id))
+            if week_metrics is not None:
+                _accumulate_totals(rollup["week_totals"], week_metrics)
+            if day_metrics is not None:
+                _accumulate_totals(rollup["day_totals"], day_metrics)
+            if events:
+                last_ts = events[-1][0]
+                if isinstance(last_ts, datetime):
+                    previous = rollup["last_updated"]
+                    if previous is None or last_ts > previous:
+                        rollup["last_updated"] = last_ts
+
     day_timeline = _location_usage_timeline(history, day_start, now, timedelta(hours=1))
     week_timeline = _location_usage_timeline(history, week_start, now, timedelta(days=1))
 
@@ -1183,6 +1209,25 @@ def location_usage(
         "day": _format_utilization_metrics(day_totals),
         "week": _format_utilization_metrics(week_totals),
     }
+
+    station_entries: List[Dict[str, Any]] = []
+    for rollup in station_rollups.values():
+        day_summary = _format_utilization_metrics(rollup["day_totals"])
+        week_summary = _format_utilization_metrics(rollup["week_totals"])
+        port_count = len(rollup["port_ids"])
+        if not port_count:
+            port_count = int(rollup["week_totals"].get("port_count", 0))
+        station_payload: Dict[str, Any] = {
+            "station_id": rollup["station_id"],
+            "port_count": port_count,
+            "summary": {"day": day_summary, "week": week_summary},
+        }
+        last_updated = rollup.get("last_updated")
+        if isinstance(last_updated, datetime):
+            station_payload["updated"] = last_updated.isoformat()
+        station_entries.append(station_payload)
+
+    station_entries.sort(key=lambda row: row.get("station_id") or "")
 
     return {
         "location_id": location_id,
@@ -1202,6 +1247,7 @@ def location_usage(
             "timeline": week_timeline,
         },
         "updated": now.isoformat(),
+        "stations": station_entries,
     }
 
 
