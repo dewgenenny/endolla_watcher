@@ -56,6 +56,7 @@ const nearMeLocateButton = document.getElementById('near-me-locate');
 const nearMeStatusEl = document.getElementById('near-me-status');
 const nearMeErrorEl = document.getElementById('near-me-error');
 const nearMeResultsEl = document.getElementById('near-me-results');
+const nearMeHighPowerOnlyInput = document.getElementById('near-me-high-power-only');
 const nearMeIncludeMotorcycleInput = document.getElementById('near-me-include-motorcycle');
 
 let chargesChart;
@@ -2564,6 +2565,7 @@ const fetchNearbyLocations = async (
   lon,
   limit = NEAR_ME_DEFAULT_LIMIT,
   includeMotorcycle = false,
+  highPowerOnly = false,
 ) => {
   const params = new URLSearchParams({
     lat: String(lat),
@@ -2572,6 +2574,9 @@ const fetchNearbyLocations = async (
   });
   if (includeMotorcycle) {
     params.set('include_motorcycle', '1');
+  }
+  if (highPowerOnly) {
+    params.set('high_power_only', '1');
   }
   const response = await fetch(`${API_BASE}/nearby?${params.toString()}`, {
     headers: { Accept: 'application/json' },
@@ -2604,11 +2609,13 @@ const requestNearbyChargers = async () => {
     const coords = await requestUserLocation();
     setNearMeStatus('Searching for chargers near you…');
     const includeMotorcycle = Boolean(nearMeIncludeMotorcycleInput?.checked);
+    const highPowerOnly = Boolean(nearMeHighPowerOnlyInput?.checked);
     const payload = await fetchNearbyLocations(
       coords.latitude,
       coords.longitude,
       NEAR_ME_DEFAULT_LIMIT,
       includeMotorcycle,
+      highPowerOnly,
     );
     const locations = Array.isArray(payload?.locations) ? payload.locations : [];
     renderNearMeResults(locations);
@@ -2619,9 +2626,18 @@ const requestNearbyChargers = async () => {
         locations.length === 1
           ? 'closest charger location'
           : `closest ${locations.length} charger locations`;
-      setNearMeStatus(`Showing the ${countText} within ${distance} of you.`);
+      const filterNotes = [];
+      if (highPowerOnly) {
+        filterNotes.push('high-power chargers only');
+      }
+      const filterText = filterNotes.length > 0 ? ` (${filterNotes.join(', ')})` : '';
+      setNearMeStatus(`Showing the ${countText} within ${distance} of you${filterText}.`);
     } else {
-      setNearMeStatus('No chargers were found near your location.');
+      setNearMeStatus(
+        highPowerOnly
+          ? 'No high-power chargers were found near your location.'
+          : 'No chargers were found near your location.',
+      );
     }
   } catch (error) {
     console.error('Failed to load nearby chargers', error);
@@ -2667,6 +2683,15 @@ const setupNearMePage = () => {
   ) {
     nearMeIncludeMotorcycleInput.setAttribute('data-initialised', 'true');
     nearMeIncludeMotorcycleInput.addEventListener('change', () => {
+      if (!nearMeRequestInFlight) {
+        requestNearbyChargers();
+      }
+    });
+  }
+
+  if (nearMeHighPowerOnlyInput && !nearMeHighPowerOnlyInput.hasAttribute('data-initialised')) {
+    nearMeHighPowerOnlyInput.setAttribute('data-initialised', 'true');
+    nearMeHighPowerOnlyInput.addEventListener('change', () => {
       if (!nearMeRequestInFlight) {
         requestNearbyChargers();
       }
