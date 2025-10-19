@@ -96,10 +96,10 @@ SCHEMA_STATEMENTS: Sequence[str] = (
         station_id VARCHAR(64) NULL,
         start VARCHAR(64) NOT NULL,
         `end` VARCHAR(64) NOT NULL,
-        generated VARCHAR(64) NOT NULL,
+        `generated` VARCHAR(64) NOT NULL,
         data LONGTEXT NOT NULL,
         UNIQUE KEY uniq_station_range (location_id, station_id, start, `end`),
-        INDEX idx_station_generated (location_id, station_id, generated)
+        INDEX idx_station_generated (location_id, station_id, `generated`)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     """,
     """
@@ -1377,11 +1377,11 @@ def save_station_fingerprint(conn: Connection, fingerprint: Dict[str, Any]) -> N
                 station_id,
                 start,
                 `end`,
-                generated,
+                `generated`,
                 data
             )
             VALUES (%s, %s, %s, %s, %s, %s)
-            ON DUPLICATE KEY UPDATE generated = VALUES(generated), data = VALUES(data)
+            ON DUPLICATE KEY UPDATE `generated` = VALUES(`generated`), data = VALUES(data)
             """,
             (
                 fingerprint.get("location_id"),
@@ -1406,7 +1406,7 @@ def latest_station_fingerprint(
             SELECT data
             FROM station_fingerprint_heatmap
             WHERE location_id <=> %s AND station_id <=> %s
-            ORDER BY generated DESC
+            ORDER BY `generated` DESC
             LIMIT 1
             """,
             (location_id, station_id),
