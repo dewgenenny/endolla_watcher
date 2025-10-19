@@ -990,7 +990,10 @@ main {
   background: linear-gradient(180deg, color-mix(in srgb, var(--bg-elev-1) 80%, transparent), transparent);
   padding: var(--space-3);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-gutter: stable both-inline;
 }
 
 .station-heatmap-visual.is-loading::after {
@@ -1017,6 +1020,8 @@ main {
   grid-template-columns: minmax(70px, 0.9fr) repeat(24, minmax(26px, 1fr));
   grid-auto-rows: minmax(26px, 1fr);
   font-size: 0.65rem;
+  min-inline-size: calc(70px + (24 * 26px) + (24 * 3px));
+  min-width: calc(70px + (24 * 26px) + (24 * 3px));
 }
 
 .fingerprint-grid__corner,
