@@ -1433,6 +1433,28 @@ def _distinct_stations(conn: Connection) -> List[Tuple[str | None, str | None]]:
         return [(row[0], row[1]) for row in cur.fetchall()]
 
 
+def stations_missing_fingerprints(
+    conn: Connection,
+) -> List[Tuple[str | None, str | None]]:
+    """Return stations lacking a stored fingerprint heatmap."""
+
+    with _with_cursor(conn) as cur:
+        cur.execute(
+            """
+            SELECT DISTINCT ps.location_id, ps.station_id
+            FROM port_status AS ps
+            WHERE ps.station_id IS NOT NULL
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM station_fingerprint_heatmap AS sfh
+                  WHERE sfh.location_id <=> ps.location_id
+                    AND sfh.station_id <=> ps.station_id
+              )
+            """
+        )
+        return [(row[0], row[1]) for row in cur.fetchall()]
+
+
 def schedule_station_fingerprints(conn: Connection, scheduled_for: datetime) -> int:
     """Queue fingerprint regeneration jobs for all stations."""
 
