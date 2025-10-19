@@ -23,6 +23,8 @@ def db_url():
 def conn(db_url):
     connection = storage.connect(db_url)
     with connection.cursor() as cur:
+        cur.execute("DELETE FROM station_fingerprint_heatmap")
+        cur.execute("DELETE FROM station_fingerprint_jobs")
         cur.execute("DELETE FROM port_status")
     connection.commit()
     yield connection

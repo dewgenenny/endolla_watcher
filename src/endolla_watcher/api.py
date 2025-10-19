@@ -6,7 +6,7 @@ import logging
 import os
 from collections import Counter
 from dataclasses import asdict, dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from math import atan2, cos, radians, sin, sqrt
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -24,6 +24,9 @@ from . import storage
 logger = logging.getLogger(__name__)
 
 DASHBOARD_WARM_INTERVAL = 15 * 60
+FINGERPRINT_POLL_INTERVAL = 60
+FINGERPRINT_SCHEDULE_HOUR = 2
+FINGERPRINT_SCHEDULE_MINUTE = 30
 EARTH_RADIUS_M = 6_371_000
 
 
@@ -333,6 +336,149 @@ async def _dashboard_warm_loop(settings: Settings, interval: int) -> None:
         raise
 
 
+def _fingerprint_reference_for(now: datetime) -> datetime:
+    midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    if now < midnight:
+        midnight -= timedelta(days=1)
+    return midnight
+
+
+def _next_fingerprint_run(now: datetime) -> datetime:
+    midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    run_time = midnight + timedelta(
+        hours=FINGERPRINT_SCHEDULE_HOUR, minutes=FINGERPRINT_SCHEDULE_MINUTE
+    )
+    if now >= run_time:
+        run_time += timedelta(days=1)
+    return run_time
+
+
+def _schedule_fingerprint_jobs(settings: Settings, reference: datetime) -> int:
+    try:
+        conn = storage.connect(settings.db_url)
+    except Exception:
+        logger.exception("Unable to connect to schedule fingerprint jobs")
+        raise
+    try:
+        return storage.schedule_station_fingerprints(conn, reference)
+    finally:
+        conn.close()
+
+
+def _dequeue_fingerprint_job(settings: Settings) -> Dict[str, Any] | None:
+    try:
+        conn = storage.connect(settings.db_url)
+    except Exception:
+        logger.exception("Unable to connect to claim fingerprint job")
+        raise
+    try:
+        return storage.dequeue_station_fingerprint_job(conn)
+    finally:
+        conn.close()
+
+
+def _run_fingerprint_job(settings: Settings, job: Dict[str, Any]) -> None:
+    try:
+        conn = storage.connect(settings.db_url)
+    except Exception:
+        logger.exception("Unable to connect to process fingerprint job %s", job.get("id"))
+        raise
+    try:
+        reference = job.get("scheduled_for")
+        if not isinstance(reference, datetime):
+            reference = datetime.now().astimezone()
+        fingerprint = storage.station_fingerprint(
+            conn,
+            job.get("location_id"),
+            job.get("station_id"),
+            reference=reference,
+        )
+        if fingerprint is not None:
+            storage.save_station_fingerprint(conn, fingerprint)
+        storage.complete_station_fingerprint_job(conn, job["id"], "completed")
+    except Exception as exc:
+        try:
+            storage.complete_station_fingerprint_job(
+                conn, job.get("id"), "failed", error=str(exc)
+            )
+        except Exception:  # pragma: no cover - defensive logging
+            logger.exception("Failed to mark fingerprint job %s as failed", job.get("id"))
+        raise
+    finally:
+        conn.close()
+
+
+async def _fingerprint_worker(settings: Settings) -> None:
+    logger.info("Starting fingerprint job worker")
+    try:
+        while True:
+            try:
+                job = await asyncio.to_thread(_dequeue_fingerprint_job, settings)
+            except Exception:
+                logger.exception("Fingerprint worker failed to claim job")
+                job = None
+            if not job:
+                await asyncio.sleep(FINGERPRINT_POLL_INTERVAL)
+                continue
+            try:
+                await asyncio.to_thread(_run_fingerprint_job, settings, job)
+            except Exception:
+                logger.exception(
+                    "Fingerprint job %s for station %s/%s failed",
+                    job.get("id"),
+                    job.get("location_id"),
+                    job.get("station_id"),
+                )
+            await asyncio.sleep(0)
+    except asyncio.CancelledError:  # pragma: no cover - shutdown cleanup
+        logger.info("Fingerprint worker cancelled")
+        raise
+
+
+async def _fingerprint_scheduler(settings: Settings) -> None:
+    logger.info(
+        "Starting fingerprint scheduler (run %02d:%02d)",
+        FINGERPRINT_SCHEDULE_HOUR,
+        FINGERPRINT_SCHEDULE_MINUTE,
+    )
+    try:
+        while True:
+            now = datetime.now().astimezone()
+            next_run = _next_fingerprint_run(now)
+            wait_seconds = max((next_run - now).total_seconds(), 1.0)
+            await asyncio.sleep(wait_seconds)
+            reference = _fingerprint_reference_for(next_run)
+            try:
+                queued = await asyncio.to_thread(
+                    _schedule_fingerprint_jobs, settings, reference
+                )
+                if queued:
+                    logger.info(
+                        "Queued %d fingerprint jobs for reference %s",
+                        queued,
+                        reference.isoformat(),
+                    )
+            except Exception:
+                logger.exception("Unable to queue fingerprint jobs")
+    except asyncio.CancelledError:  # pragma: no cover - shutdown cleanup
+        logger.info("Fingerprint scheduler cancelled")
+        raise
+
+
+async def _bootstrap_fingerprint_jobs(settings: Settings) -> None:
+    reference = _fingerprint_reference_for(datetime.now().astimezone())
+    try:
+        queued = await asyncio.to_thread(_schedule_fingerprint_jobs, settings, reference)
+        if queued:
+            logger.info(
+                "Queued %d fingerprint jobs for reference %s during startup",
+                queued,
+                reference.isoformat(),
+            )
+    except Exception:
+        logger.exception("Failed to queue fingerprint jobs on startup")
+
+
 def _build_dashboard(
     settings: Settings,
     locations: Dict[str, Dict[str, Any]],
@@ -382,6 +528,8 @@ async def on_startup() -> None:
     app.state.locations = await _load_locations(settings)
     app.state.fetch_task = None
     app.state.dashboard_warm_task = None
+    app.state.fingerprint_worker_task = None
+    app.state.fingerprint_scheduler_task = None
     app.state.last_fetch = None
     app.state.dashboard_cache: Dict[Any, Dict[str, Any]] = {}
     app.state.dashboard_cache_lock = asyncio.Lock()
@@ -390,10 +538,17 @@ async def on_startup() -> None:
     if settings.auto_fetch:
         await _fetch_once(settings)
     await _warm_dashboard_cache(settings)
+    await _bootstrap_fingerprint_jobs(settings)
     if settings.auto_fetch:
         app.state.fetch_task = asyncio.create_task(_fetch_loop(settings))
     app.state.dashboard_warm_task = asyncio.create_task(
         _dashboard_warm_loop(settings, DASHBOARD_WARM_INTERVAL)
+    )
+    app.state.fingerprint_worker_task = asyncio.create_task(
+        _fingerprint_worker(settings)
+    )
+    app.state.fingerprint_scheduler_task = asyncio.create_task(
+        _fingerprint_scheduler(settings)
     )
 
 
@@ -417,6 +572,28 @@ async def on_shutdown() -> None:
             pass
         finally:
             app.state.dashboard_warm_task = None
+    worker_task: asyncio.Task | None = getattr(
+        app.state, "fingerprint_worker_task", None
+    )
+    if worker_task is not None:
+        worker_task.cancel()
+        try:
+            await worker_task
+        except asyncio.CancelledError:
+            pass
+        finally:
+            app.state.fingerprint_worker_task = None
+    scheduler_task: asyncio.Task | None = getattr(
+        app.state, "fingerprint_scheduler_task", None
+    )
+    if scheduler_task is not None:
+        scheduler_task.cancel()
+        try:
+            await scheduler_task
+        except asyncio.CancelledError:
+            pass
+        finally:
+            app.state.fingerprint_scheduler_task = None
 
 
 def _require_settings() -> Settings:
@@ -490,6 +667,35 @@ async def charger_details(location_id: str, station_id: str) -> Dict[str, Any]:
     if not any(sessions.values()):
         raise HTTPException(status_code=404, detail="Charger not found")
     return {"sessions": sessions}
+
+
+@app.get("/api/stations/{location_id}/{station_id}/fingerprint")
+async def station_fingerprint_details(
+    location_id: str, station_id: str
+) -> Dict[str, Any]:
+    settings = _require_settings()
+
+    def _load_fingerprint() -> Dict[str, Any] | None:
+        conn = _connect_db(settings)
+        try:
+            cached = storage.latest_station_fingerprint(conn, location_id, station_id)
+            if cached is not None:
+                return cached
+            fingerprint = storage.station_fingerprint(conn, location_id, station_id)
+            if fingerprint is None:
+                return None
+            storage.save_station_fingerprint(conn, fingerprint)
+            return fingerprint
+        finally:
+            conn.close()
+
+    fingerprint = await asyncio.to_thread(_load_fingerprint)
+    if fingerprint is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Station not found or insufficient telemetry to build fingerprint",
+        )
+    return fingerprint
 
 
 @app.get("/api/locations/{location_id}")
