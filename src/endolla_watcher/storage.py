@@ -1,6 +1,7 @@
 """Persistence helpers backed by a MySQL database."""
 from __future__ import annotations
 
+import json
 import logging
 import os
 from contextlib import contextmanager
@@ -88,9 +89,38 @@ SCHEMA_STATEMENTS: Sequence[str] = (
         INDEX idx_ts (ts)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     """,
+    """
+    CREATE TABLE IF NOT EXISTS station_fingerprint_heatmap (
+        id BIGINT AUTO_INCREMENT PRIMARY KEY,
+        location_id VARCHAR(64) NULL,
+        station_id VARCHAR(64) NULL,
+        start VARCHAR(64) NOT NULL,
+        `end` VARCHAR(64) NOT NULL,
+        generated VARCHAR(64) NOT NULL,
+        data LONGTEXT NOT NULL,
+        UNIQUE KEY uniq_station_range (location_id, station_id, start, `end`),
+        INDEX idx_station_generated (location_id, station_id, generated)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS station_fingerprint_jobs (
+        id BIGINT AUTO_INCREMENT PRIMARY KEY,
+        location_id VARCHAR(64) NULL,
+        station_id VARCHAR(64) NULL,
+        scheduled_for VARCHAR(64) NOT NULL,
+        status VARCHAR(16) NOT NULL,
+        attempts INT NOT NULL DEFAULT 0,
+        last_error TEXT NULL,
+        created VARCHAR(64) NOT NULL,
+        updated VARCHAR(64) NOT NULL,
+        completed VARCHAR(64) NULL,
+        UNIQUE KEY uniq_station_schedule (location_id, station_id, scheduled_for),
+        INDEX idx_jobs_status_schedule (status, scheduled_for)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    """,
 )
 
-CURRENT_SCHEMA_VERSION = 1
+CURRENT_SCHEMA_VERSION = 2
 
 
 @contextmanager
@@ -409,6 +439,88 @@ def _recent_location_history(
         for station_id, port_id, ts_str, status in cur.fetchall():
             key = (station_id, port_id)
             history.setdefault(key, []).append((datetime.fromisoformat(ts_str), status))
+    return history
+
+
+def _distinct_station_ports(
+    conn: Connection, location_id: str | None, station_id: str | None
+) -> List[str | None]:
+    """Return all known ports for a station."""
+
+    with _with_cursor(conn) as cur:
+        cur.execute(
+            """
+            SELECT DISTINCT port_id
+            FROM port_status
+            WHERE location_id <=> %s AND station_id <=> %s
+            """,
+            (location_id, station_id),
+        )
+        return [row[0] for row in cur.fetchall()]
+
+
+def _station_history_between(
+    conn: Connection,
+    location_id: str | None,
+    station_id: str | None,
+    start: datetime,
+    end: datetime,
+) -> Dict[str | None, List[Tuple[datetime, str]]]:
+    """Return status history for a station between ``start`` and ``end``."""
+
+    history: Dict[str | None, List[Tuple[datetime, str]]] = {
+        port_id: [] for port_id in _distinct_station_ports(conn, location_id, station_id)
+    }
+
+    params = (location_id, station_id, start.isoformat(), end.isoformat())
+    with _with_cursor(conn) as cur:
+        cur.execute(
+            """
+            SELECT port_id, ts, status
+            FROM port_status
+            WHERE location_id <=> %s
+              AND station_id <=> %s
+              AND ts >= %s AND ts < %s
+            ORDER BY port_id, ts
+            """,
+            params,
+        )
+        for port_id, ts_str, status in cur.fetchall():
+            try:
+                ts = datetime.fromisoformat(ts_str)
+            except (TypeError, ValueError):
+                continue
+            history.setdefault(port_id, []).append((ts, status))
+
+    if not history:
+        return {}
+
+    previous_params = (location_id, station_id, start.isoformat(), location_id, station_id)
+    with _with_cursor(conn) as cur:
+        cur.execute(
+            """
+            SELECT ps.port_id, ps.ts, ps.status
+            FROM port_status ps
+            JOIN (
+                SELECT port_id, MAX(ts) AS max_ts
+                FROM port_status
+                WHERE location_id <=> %s AND station_id <=> %s AND ts < %s
+                GROUP BY port_id
+            ) latest
+              ON ps.port_id <=> latest.port_id AND ps.ts = latest.max_ts
+            WHERE ps.location_id <=> %s AND ps.station_id <=> %s
+            """,
+            previous_params,
+        )
+        for port_id, ts_str, status in cur.fetchall():
+            try:
+                ts = datetime.fromisoformat(ts_str)
+            except (TypeError, ValueError):
+                continue
+            events = history.setdefault(port_id, [])
+            if not events or ts < events[0][0]:
+                events.insert(0, (ts, status))
+
     return history
 
 
@@ -1091,6 +1203,357 @@ def location_usage(
         },
         "updated": now.isoformat(),
     }
+
+
+def _station_fingerprint_range(reference: datetime) -> tuple[datetime, datetime]:
+    """Return the 7-day range ending at the most recent midnight."""
+
+    midnight = reference.replace(hour=0, minute=0, second=0, microsecond=0)
+    if reference < midnight:
+        midnight -= timedelta(days=1)
+    start = midnight - timedelta(days=7)
+    return start, midnight
+
+
+def _format_weekday_label(weekday: int, hour: int) -> str:
+    names = [
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+        "Thursday",
+        "Friday",
+        "Saturday",
+        "Sunday",
+    ]
+    label = names[weekday % 7]
+    return f"{label} {hour:02d}:00"
+
+
+def station_fingerprint(
+    conn: Connection,
+    location_id: str | None,
+    station_id: str | None,
+    *,
+    reference: datetime | None = None,
+) -> Dict[str, Any] | None:
+    """Compute a weekly fingerprint heatmap for a station."""
+
+    if reference is None:
+        reference = datetime.now().astimezone()
+    if reference.tzinfo is None:
+        reference = reference.replace(tzinfo=timezone.utc)
+
+    start, end = _station_fingerprint_range(reference)
+    history = _station_history_between(conn, location_id, station_id, start, end)
+    if not history:
+        return None
+
+    generated = datetime.now().astimezone()
+    buckets: Dict[datetime, Dict[str, float]] = {}
+    for events in history.values():
+        intervals = _status_intervals(events, end=end)
+        for interval_start, interval_end, status in intervals:
+            if interval_end <= start or interval_start >= end:
+                continue
+            seg_start = max(interval_start, start)
+            seg_end = min(interval_end, end)
+            if seg_end <= seg_start:
+                continue
+            current = seg_start
+            while current < seg_end:
+                bucket_start = current.replace(minute=0, second=0, microsecond=0)
+                bucket_end = min(bucket_start + timedelta(hours=1), seg_end)
+                if bucket_end <= current:
+                    break
+                duration = (bucket_end - current).total_seconds()
+                totals = buckets.setdefault(bucket_start, _empty_totals())
+                totals["monitored_seconds"] = (
+                    totals.get("monitored_seconds", 0.0) + duration
+                )
+                if status is not None and status not in UNAVAILABLE_STATUSES:
+                    totals["available_seconds"] = (
+                        totals.get("available_seconds", 0.0) + duration
+                    )
+                if status in OCCUPIED_STATUSES:
+                    totals["occupied_seconds"] = (
+                        totals.get("occupied_seconds", 0.0) + duration
+                    )
+                if status in ACTIVE_CHARGING_STATUSES:
+                    totals["active_seconds"] = (
+                        totals.get("active_seconds", 0.0) + duration
+                    )
+                current = bucket_end
+
+    port_count = len([port for port in history.keys() if port is not None])
+    total_capacity_seconds = port_count * 3600 if port_count else 0
+
+    cells: List[Dict[str, Any]] = []
+    current = start
+    while current < end:
+        bucket_end = current + timedelta(hours=1)
+        totals = buckets.get(current, _empty_totals())
+        metrics = _format_utilization_metrics(totals) if totals.get("monitored_seconds") else {
+            "sessions": 0,
+            "monitored_seconds": 0.0,
+            "monitored_hours": 0.0,
+            "monitored_days": 0.0,
+            "available_seconds": 0.0,
+            "occupied_seconds": 0.0,
+            "active_seconds": 0.0,
+            "session_count_per_day": 0.0,
+            "session_count_per_hour": 0.0,
+            "occupation_utilization_pct": 0.0,
+            "active_charging_utilization_pct": 0.0,
+            "availability_ratio": 0.0,
+        }
+        metrics["monitored_seconds"] = totals.get("monitored_seconds", 0.0)
+        metrics["available_seconds"] = totals.get("available_seconds", 0.0)
+        metrics["occupied_seconds"] = totals.get("occupied_seconds", 0.0)
+        metrics["active_seconds"] = totals.get("active_seconds", 0.0)
+        capacity = total_capacity_seconds
+        coverage = (
+            metrics["monitored_seconds"] / capacity if capacity else 0.0
+        )
+        cell = {
+            "weekday": current.weekday(),
+            "hour": current.hour,
+            "start": current.isoformat(),
+            "end": bucket_end.isoformat(),
+            "metrics": metrics,
+            "coverage_ratio": coverage,
+            "label": _format_weekday_label(current.weekday(), current.hour),
+        }
+        cells.append(cell)
+        current = bucket_end
+
+    def _top_cells(desc: bool) -> List[Dict[str, Any]]:
+        filtered = [
+            cell
+            for cell in cells
+            if cell["metrics"].get("monitored_seconds", 0.0) >= 900
+            and cell["coverage_ratio"] >= 0.25
+        ]
+        filtered.sort(
+            key=lambda item: item["metrics"].get("occupation_utilization_pct", 0.0),
+            reverse=desc,
+        )
+        return [
+            {
+                "weekday": item["weekday"],
+                "hour": item["hour"],
+                "label": item["label"],
+                "occupation_utilization_pct": item["metrics"].get(
+                    "occupation_utilization_pct", 0.0
+                ),
+                "coverage_ratio": item["coverage_ratio"],
+            }
+            for item in filtered[:5]
+        ]
+
+    fingerprint = {
+        "location_id": location_id,
+        "station_id": station_id,
+        "start": start.isoformat(),
+        "end": end.isoformat(),
+        "generated": generated.isoformat(timespec="seconds"),
+        "port_count": port_count,
+        "cells": cells,
+        "busiest": _top_cells(True),
+        "quietest": _top_cells(False),
+    }
+
+    return fingerprint
+
+
+def save_station_fingerprint(conn: Connection, fingerprint: Dict[str, Any]) -> None:
+    """Persist a station fingerprint heatmap."""
+
+    payload = json.dumps(fingerprint, separators=(",", ":"))
+    with _with_cursor(conn) as cur:
+        cur.execute(
+            """
+            INSERT INTO station_fingerprint_heatmap (
+                location_id,
+                station_id,
+                start,
+                `end`,
+                generated,
+                data
+            )
+            VALUES (%s, %s, %s, %s, %s, %s)
+            ON DUPLICATE KEY UPDATE generated = VALUES(generated), data = VALUES(data)
+            """,
+            (
+                fingerprint.get("location_id"),
+                fingerprint.get("station_id"),
+                fingerprint.get("start"),
+                fingerprint.get("end"),
+                fingerprint.get("generated"),
+                payload,
+            ),
+        )
+    conn.commit()
+
+
+def latest_station_fingerprint(
+    conn: Connection, location_id: str | None, station_id: str | None
+) -> Dict[str, Any] | None:
+    """Return the most recently generated fingerprint heatmap."""
+
+    with _with_cursor(conn) as cur:
+        cur.execute(
+            """
+            SELECT data
+            FROM station_fingerprint_heatmap
+            WHERE location_id <=> %s AND station_id <=> %s
+            ORDER BY generated DESC
+            LIMIT 1
+            """,
+            (location_id, station_id),
+        )
+        row = cur.fetchone()
+    if row is None:
+        return None
+    try:
+        data = json.loads(row[0])
+    except (TypeError, json.JSONDecodeError):
+        return None
+    return data
+
+
+def _distinct_stations(conn: Connection) -> List[Tuple[str | None, str | None]]:
+    with _with_cursor(conn) as cur:
+        cur.execute(
+            """
+            SELECT DISTINCT location_id, station_id
+            FROM port_status
+            WHERE station_id IS NOT NULL
+            """
+        )
+        return [(row[0], row[1]) for row in cur.fetchall()]
+
+
+def schedule_station_fingerprints(conn: Connection, scheduled_for: datetime) -> int:
+    """Queue fingerprint regeneration jobs for all stations."""
+
+    stations = _distinct_stations(conn)
+    if not stations:
+        return 0
+    scheduled_iso = scheduled_for.isoformat(timespec="seconds")
+    now_iso = datetime.now().astimezone().isoformat(timespec="seconds")
+    rows = [
+        (
+            loc,
+            sta,
+            scheduled_iso,
+            "pending",
+            0,
+            None,
+            now_iso,
+            now_iso,
+        )
+        for loc, sta in stations
+    ]
+    inserted = 0
+    with _with_cursor(conn) as cur:
+        cur.executemany(
+            """
+            INSERT INTO station_fingerprint_jobs (
+                location_id,
+                station_id,
+                scheduled_for,
+                status,
+                attempts,
+                last_error,
+                created,
+                updated
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            ON DUPLICATE KEY UPDATE
+                status = 'pending',
+                updated = VALUES(updated),
+                last_error = NULL
+            """,
+            rows,
+        )
+        inserted = cur.rowcount
+    conn.commit()
+    return inserted
+
+
+def dequeue_station_fingerprint_job(
+    conn: Connection, *, now: datetime | None = None
+) -> Dict[str, Any] | None:
+    """Claim the next pending fingerprint job."""
+
+    if now is None:
+        now = datetime.now().astimezone()
+    now_iso = now.isoformat(timespec="seconds")
+    with _with_cursor(conn) as cur:
+        cur.execute(
+            """
+            SELECT id, location_id, station_id, scheduled_for, attempts
+            FROM station_fingerprint_jobs
+            WHERE status = 'pending' AND scheduled_for <= %s
+            ORDER BY scheduled_for ASC, id ASC
+            LIMIT 1
+            """,
+            (now_iso,),
+        )
+        row = cur.fetchone()
+    if row is None:
+        return None
+    job_id, loc, sta, scheduled_for, attempts = row
+    with _with_cursor(conn) as cur:
+        cur.execute(
+            """
+            UPDATE station_fingerprint_jobs
+            SET status = 'processing', attempts = attempts + 1, updated = %s
+            WHERE id = %s AND status = 'pending'
+            """,
+            (now_iso, job_id),
+        )
+        if cur.rowcount == 0:
+            conn.rollback()
+            return None
+    conn.commit()
+    try:
+        scheduled_dt = datetime.fromisoformat(scheduled_for)
+    except ValueError:
+        scheduled_dt = None
+    return {
+        "id": job_id,
+        "location_id": loc,
+        "station_id": sta,
+        "scheduled_for": scheduled_dt,
+        "attempts": attempts + 1,
+    }
+
+
+def complete_station_fingerprint_job(
+    conn: Connection,
+    job_id: int,
+    status: str,
+    *,
+    error: str | None = None,
+) -> None:
+    """Mark a fingerprint job as completed or failed."""
+
+    now_iso = datetime.now().astimezone().isoformat(timespec="seconds")
+    completed_iso = now_iso if status == "completed" else None
+    with _with_cursor(conn) as cur:
+        cur.execute(
+            """
+            UPDATE station_fingerprint_jobs
+            SET status = %s,
+                last_error = %s,
+                updated = %s,
+                completed = %s
+            WHERE id = %s
+            """,
+            (status, error, now_iso, completed_iso, job_id),
+        )
+    conn.commit()
 
 
 def stats_from_db(conn: Connection, *, now: datetime | None = None) -> Dict[str, Any]:
