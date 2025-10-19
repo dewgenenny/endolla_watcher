@@ -545,6 +545,7 @@ async def nearby(
     lon: float = Query(..., ge=-180.0, le=180.0),
     limit: int = Query(3, ge=1, le=20),
     include_motorcycle: bool = Query(False),
+    high_power_only: bool = Query(False),
 ) -> Dict[str, Any]:
     settings = _require_settings()
     locations_map: Dict[str, Dict[str, Any]] = getattr(app.state, "locations", {})
@@ -554,6 +555,14 @@ async def nearby(
         if not include_motorcycle:
             charger_type = str(info.get("charger_type") or "").strip().lower()
             if charger_type == "motorcycle":
+                continue
+        if high_power_only:
+            max_power_raw = info.get("max_power_kw")
+            try:
+                max_power_value = float(max_power_raw)
+            except (TypeError, ValueError):
+                max_power_value = None
+            if max_power_value is None or max_power_value <= 22.0:
                 continue
         lat_val = info.get("lat")
         lon_val = info.get("lon")

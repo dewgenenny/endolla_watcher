@@ -128,7 +128,7 @@ def test_nearby_endpoint(tmp_path, monkeypatch, db_url):
                             {
                                 "id": "S1",
                                 "ports": [
-                                    {"id": "P1", "power_kw": 22},
+                                    {"id": "P1", "power_kw": 50},
                                     {"id": "P2", "power_kw": 7.2, "notes": "MOTORCYCLE_ONLY"},
                                 ],
                             }
@@ -199,7 +199,7 @@ def test_nearby_endpoint(tmp_path, monkeypatch, db_url):
         first = payload["locations"][0]
         assert any(port["status"] == "IN_USE" for port in first["ports"])
         assert first["charger_type"] == "both"
-        assert first["max_power_kw"] == 22.0
+        assert first["max_power_kw"] == 50.0
 
         response_all = client.get(
             "/api/nearby",
@@ -214,6 +214,21 @@ def test_nearby_endpoint(tmp_path, monkeypatch, db_url):
         assert second["port_count"] == 2
         assert second["charger_type"] == "motorcycle"
         assert second["max_power_kw"] == 3.6
+
+        response_high_power = client.get(
+            "/api/nearby",
+            params={
+                "lat": 41.0,
+                "lon": 2.0,
+                "limit": 3,
+                "include_motorcycle": True,
+                "high_power_only": True,
+            },
+        )
+        assert response_high_power.status_code == 200
+        payload_high_power = response_high_power.json()
+        assert [entry["location_id"] for entry in payload_high_power["locations"]] == ["L1"]
+        assert payload_high_power["locations"][0]["max_power_kw"] == 50.0
 
 
 def test_dashboard_cache(monkeypatch, tmp_path, db_url):
