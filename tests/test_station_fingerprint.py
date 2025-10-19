@@ -1,6 +1,36 @@
+import os
 from datetime import datetime, timedelta, timezone
 
+import pytest
+
+TEST_DB_URL = os.getenv("ENDOLLA_TEST_DB_URL")
+if not TEST_DB_URL:
+    pytest.skip("ENDOLLA_TEST_DB_URL not configured", allow_module_level=True)
+
+os.environ.setdefault("ENDOLLA_DB_URL", TEST_DB_URL)
+
 from endolla_watcher import storage
+from endolla_watcher.api import (
+    Settings,
+    _fingerprint_reference_for,
+    _generate_missing_fingerprints,
+)
+from endolla_watcher.rules import Rules
+
+
+def _make_settings(db_url: str) -> Settings:
+    return Settings(
+        db_url=db_url,
+        dataset_file=None,
+        fetch_interval=300,
+        auto_fetch=False,
+        location_file=None,
+        rules=Rules(),
+        cors_origins=["*"],
+        debug=False,
+        dashboard_cache_ttl=60,
+        dashboard_cache_presets=[(5, "hour"), (5, "day")],
+    )
 
 
 def _record(conn, ts, status, port):
@@ -82,3 +112,24 @@ def test_station_fingerprint_queue(conn):
     storage.complete_station_fingerprint_job(conn, job["id"], "completed")
     follow_up = storage.dequeue_station_fingerprint_job(conn, now=now)
     assert follow_up is None
+
+
+def test_generate_missing_fingerprints_on_startup(conn, db_url):
+    now = datetime(2025, 1, 8, 5, tzinfo=timezone.utc)
+    reference = _fingerprint_reference_for(now)
+    settings = _make_settings(db_url)
+
+    baseline = reference - timedelta(days=1)
+    _record(conn, baseline, "AVAILABLE", "P1")
+
+    missing_before = storage.stations_missing_fingerprints(conn)
+    assert ("L1", "S1") in missing_before
+
+    created = _generate_missing_fingerprints(settings, reference)
+    assert created == 1
+
+    cached = storage.latest_station_fingerprint(conn, "L1", "S1")
+    assert cached is not None
+
+    missing_after = storage.stations_missing_fingerprints(conn)
+    assert ("L1", "S1") not in missing_after

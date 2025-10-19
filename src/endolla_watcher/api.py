@@ -365,6 +365,44 @@ def _schedule_fingerprint_jobs(settings: Settings, reference: datetime) -> int:
         conn.close()
 
 
+def _generate_missing_fingerprints(settings: Settings, reference: datetime) -> int:
+    try:
+        conn = storage.connect(settings.db_url)
+    except Exception:
+        logger.exception("Unable to connect to generate station fingerprints")
+        raise
+    try:
+        stations = storage.stations_missing_fingerprints(conn)
+        if not stations:
+            return 0
+
+        generated = 0
+        for location_id, station_id in stations:
+            try:
+                fingerprint = storage.station_fingerprint(
+                    conn, location_id, station_id, reference=reference
+                )
+            except Exception:
+                logger.exception(
+                    "Failed to generate fingerprint for station %s/%s",
+                    location_id,
+                    station_id,
+                )
+                continue
+            if fingerprint is None:
+                logger.debug(
+                    "Skipping fingerprint persistence for station %s/%s; insufficient data",
+                    location_id,
+                    station_id,
+                )
+                continue
+            storage.save_station_fingerprint(conn, fingerprint)
+            generated += 1
+        return generated
+    finally:
+        conn.close()
+
+
 def _dequeue_fingerprint_job(settings: Settings) -> Dict[str, Any] | None:
     try:
         conn = storage.connect(settings.db_url)
@@ -477,6 +515,17 @@ async def _bootstrap_fingerprint_jobs(settings: Settings) -> None:
             )
     except Exception:
         logger.exception("Failed to queue fingerprint jobs on startup")
+    try:
+        created = await asyncio.to_thread(
+            _generate_missing_fingerprints, settings, reference
+        )
+        if created:
+            logger.info(
+                "Generated %d missing station fingerprints during startup",
+                created,
+            )
+    except Exception:
+        logger.exception("Failed to generate missing station fingerprints on startup")
 
 
 def _build_dashboard(
