@@ -111,6 +111,9 @@ def test_location_details_endpoint(tmp_path, monkeypatch, auto_fetch, db_url):
         assert payload["summary"]["week"]["availability_ratio"] >= 0
         assert len(payload["usage_day"]["timeline"]) == 24
         assert len(payload["usage_week"]["timeline"]) == 7
+        assert isinstance(payload["stations"], list)
+        assert payload["stations"]
+        assert payload["stations"][0]["station_id"] == "S1"
 
 
 def test_nearby_endpoint(tmp_path, monkeypatch, db_url):

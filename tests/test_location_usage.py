@@ -38,6 +38,12 @@ def test_location_usage_summary(conn):
     assert details["location_id"] == "L1"
     assert details["station_count"] == 1
     assert details["port_count"] == 1
+    assert isinstance(details["stations"], list)
+    assert details["stations"], "expected station rollups"
+    station_summary = details["stations"][0]
+    assert station_summary["station_id"] == "S1"
+    assert station_summary["port_count"] == 1
+    assert station_summary["summary"]["week"]["occupation_utilization_pct"] >= 0
     assert len(details["usage_day"]["timeline"]) == 24
     assert len(details["usage_week"]["timeline"]) == 7
     assert details["summary"]["day"]["occupation_utilization_pct"] > 0

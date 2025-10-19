@@ -51,6 +51,9 @@ const heatmapDescriptionEl = document.getElementById('heatmap-description');
 const heatmapNoteEl = document.getElementById('heatmap-note');
 const heatmapListContainer = document.getElementById('heatmap-location-list');
 const heatmapUpdatedEl = document.getElementById('heatmap-updated');
+const stationHeatmapSection = document.getElementById('station-heatmaps');
+const stationHeatmapContainer = document.getElementById('station-heatmap-container');
+const stationHeatmapStatus = document.getElementById('station-heatmap-status');
 const nearMeSection = document.getElementById('near-me');
 const nearMeLocateButton = document.getElementById('near-me-locate');
 const nearMeStatusEl = document.getElementById('near-me-status');
@@ -87,6 +90,9 @@ let heatmapResizeHandle;
 let heatmapPendingBounds;
 let nearMeRequestInFlight = false;
 let nearMeAutoRequested = false;
+const stationHeatmapCards = new Map();
+let stationHeatmapSequence = 0;
+let stationHeatmapPending = 0;
 
 const debugFlags = (() => {
   try {
@@ -145,6 +151,18 @@ const HEATMAP_METRICS = {
 };
 const HEATMAP_DEFAULT_METRIC = 'occupation_utilization_pct';
 const NEAR_ME_DEFAULT_LIMIT = 3;
+
+const FINGERPRINT_WEEKDAY_LABELS = [
+  'Monday',
+  'Tuesday',
+  'Wednesday',
+  'Thursday',
+  'Friday',
+  'Saturday',
+  'Sunday',
+];
+const FINGERPRINT_WEEKDAY_SHORT = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const FINGERPRINT_HOUR_LABELS = Array.from({ length: 24 }, (_value, index) => `${index.toString().padStart(2, '0')}:00`);
 
 const MAP_STYLE_URL = 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json';
 const MAP_DEFAULT_CENTER = [2.1734, 41.3851];
@@ -2086,6 +2104,449 @@ const setLocationError = (message) => {
   }
 };
 
+const fingerprintCellKey = (weekday, hour) => `${weekday}-${hour}`;
+
+const fingerprintColorForValue = (value) => {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) {
+    return 'rgba(148, 163, 184, 0.18)';
+  }
+  const ratio = Math.min(Math.max(numeric, 0), 100) / 100;
+  const hue = 210 - ratio * 160;
+  const saturation = 70 + ratio * 20;
+  const lightness = 92 - ratio * 55;
+  return `hsl(${hue.toFixed(1)}deg, ${saturation.toFixed(1)}%, ${lightness.toFixed(1)}%)`;
+};
+
+const formatFingerprintCellLabel = (weekday, hour) => {
+  const day = FINGERPRINT_WEEKDAY_LABELS[weekday] ?? `Day ${weekday}`;
+  const hourLabel = FINGERPRINT_HOUR_LABELS[hour] ?? `${hour}:00`;
+  return `${day} ${hourLabel}`;
+};
+
+const describeStationMeta = (station) => {
+  if (!station) {
+    return '';
+  }
+  const parts = [];
+  const portCount = Number(station.port_count);
+  if (Number.isFinite(portCount) && portCount > 0) {
+    parts.push(`${formatNumber(portCount)} port${portCount === 1 ? '' : 's'}`);
+  }
+  const weekSummary = station.summary?.week ?? {};
+  const occupationPct = Number(weekSummary.occupation_utilization_pct);
+  if (Number.isFinite(occupationPct) && occupationPct > 0) {
+    parts.push(`${formatPercent(occupationPct, 0)} occupied`);
+  }
+  const availabilityRatio = Number(weekSummary.availability_ratio);
+  if (Number.isFinite(availabilityRatio) && availabilityRatio > 0) {
+    parts.push(`${formatRatioPercent(availabilityRatio, 0)} availability`);
+  }
+  const monitoredDays = Number(weekSummary.monitored_days);
+  if (Number.isFinite(monitoredDays) && monitoredDays > 0) {
+    const formatted = formatDecimal(monitoredDays, {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 1,
+    });
+    if (formatted !== '–') {
+      parts.push(`${formatted} days monitored`);
+    }
+  }
+  return parts.join(' · ');
+};
+
+const createStationHeatmapInsight = (title) => {
+  const container = document.createElement('div');
+  const heading = document.createElement('h5');
+  heading.className = 'station-heatmap-insight__title';
+  heading.textContent = title;
+  const list = document.createElement('ul');
+  list.className = 'station-heatmap-list';
+  const placeholder = document.createElement('li');
+  placeholder.className = 'station-heatmap-list-empty';
+  placeholder.textContent = 'Loading…';
+  list.appendChild(placeholder);
+  container.append(heading, list);
+  return { container, list };
+};
+
+const createStationHeatmapCard = (station) => {
+  const card = document.createElement('article');
+  card.className = 'card station-heatmap-card';
+  const body = document.createElement('div');
+  body.className = 'card__body';
+  card.appendChild(body);
+
+  const header = document.createElement('div');
+  header.className = 'station-heatmap-header';
+  body.appendChild(header);
+
+  const title = document.createElement('h4');
+  title.className = 'station-heatmap-title';
+  const stationId = station?.station_id ? String(station.station_id) : '';
+  title.textContent = stationId ? `Station ${stationId}` : 'Station';
+  header.appendChild(title);
+
+  const portCount = Number(station?.port_count);
+  if (Number.isFinite(portCount) && portCount > 0) {
+    const pill = document.createElement('span');
+    pill.className = 'station-heatmap-pill';
+    pill.textContent = `${formatNumber(portCount)} port${portCount === 1 ? '' : 's'}`;
+    header.appendChild(pill);
+  }
+
+  const meta = document.createElement('p');
+  meta.className = 'station-heatmap-meta muted';
+  const metaText = describeStationMeta(station);
+  if (metaText) {
+    meta.textContent = metaText;
+    meta.dataset.metaState = 'provided';
+  } else {
+    meta.textContent = 'Utilization summary will appear as telemetry accumulates.';
+    meta.dataset.metaState = 'pending';
+  }
+  body.appendChild(meta);
+
+  const generated = document.createElement('p');
+  generated.className = 'station-heatmap-generated muted';
+  generated.hidden = true;
+  body.appendChild(generated);
+
+  const statusEl = document.createElement('p');
+  statusEl.className = 'station-heatmap-status muted';
+  statusEl.textContent = 'Loading fingerprint…';
+  body.appendChild(statusEl);
+
+  const visual = document.createElement('div');
+  visual.className = 'station-heatmap-visual is-loading';
+  visual.setAttribute('role', 'img');
+  visual.setAttribute('aria-label', 'Weekly station fingerprint heatmap');
+  body.appendChild(visual);
+
+  const coverageEl = document.createElement('p');
+  coverageEl.className = 'station-heatmap-coverage muted';
+  coverageEl.hidden = true;
+  body.appendChild(coverageEl);
+
+  const legend = document.createElement('div');
+  legend.className = 'station-heatmap-legend';
+  const legendMin = document.createElement('span');
+  legendMin.textContent = '0%';
+  const legendBar = document.createElement('div');
+  legendBar.className = 'station-heatmap-legend-bar';
+  const legendMax = document.createElement('span');
+  legendMax.textContent = '100%';
+  legend.append(legendMin, legendBar, legendMax);
+  body.appendChild(legend);
+
+  const insights = document.createElement('div');
+  insights.className = 'station-heatmap-insights';
+  const busiest = createStationHeatmapInsight('Busiest windows');
+  const quietest = createStationHeatmapInsight('Quietest windows');
+  insights.append(busiest.container, quietest.container);
+  body.appendChild(insights);
+
+  return {
+    card,
+    statusEl,
+    visual,
+    legendMinEl: legendMin,
+    legendMaxEl: legendMax,
+    coverageEl,
+    generatedEl: generated,
+    busiestList: busiest.list,
+    quietestList: quietest.list,
+    metaEl: meta,
+  };
+};
+
+const renderStationFingerprintList = (listEl, entries, emptyText) => {
+  if (!listEl) {
+    return;
+  }
+  listEl.innerHTML = '';
+  if (!Array.isArray(entries) || entries.length === 0) {
+    const empty = document.createElement('li');
+    empty.className = 'station-heatmap-list-empty';
+    empty.textContent = emptyText;
+    listEl.appendChild(empty);
+    return;
+  }
+  entries.forEach((entry) => {
+    const item = document.createElement('li');
+    const label = document.createElement('span');
+    label.className = 'station-heatmap-list-label';
+    label.textContent = entry.label || formatFingerprintCellLabel(entry.weekday, entry.hour);
+    const meta = document.createElement('span');
+    meta.className = 'station-heatmap-list-meta';
+    const occupancyValue = Number(entry.occupation_utilization_pct ?? 0);
+    meta.textContent = formatPercent(occupancyValue, 0);
+    const coverage = Number(entry.coverage_ratio);
+    if (Number.isFinite(coverage) && coverage > 0) {
+      meta.appendChild(document.createTextNode(' '));
+      const badge = document.createElement('span');
+      badge.className = 'station-heatmap-coverage-badge';
+      badge.textContent = formatRatioPercent(coverage, 0);
+      meta.appendChild(badge);
+    }
+    item.append(label, meta);
+    listEl.appendChild(item);
+  });
+};
+
+const renderStationFingerprint = (card, fingerprint) => {
+  if (!card) {
+    return;
+  }
+  const {
+    visual,
+    statusEl,
+    legendMinEl,
+    legendMaxEl,
+    coverageEl,
+    generatedEl,
+    busiestList,
+    quietestList,
+    metaEl,
+  } = card;
+  if (visual) {
+    visual.innerHTML = '';
+    visual.classList.remove('is-loading');
+  }
+  if (statusEl) {
+    statusEl.textContent = '';
+    statusEl.hidden = true;
+  }
+
+  const cells = Array.isArray(fingerprint?.cells) ? fingerprint.cells : [];
+  if (cells.length === 0) {
+    if (statusEl) {
+      statusEl.textContent = 'No fingerprint data available yet.';
+      statusEl.hidden = false;
+    }
+    return;
+  }
+
+  const grid = document.createElement('div');
+  grid.className = 'fingerprint-grid';
+  const corner = document.createElement('div');
+  corner.className = 'fingerprint-grid__corner';
+  grid.appendChild(corner);
+
+  FINGERPRINT_HOUR_LABELS.forEach((label) => {
+    const hourCell = document.createElement('div');
+    hourCell.className = 'fingerprint-grid__hour';
+    hourCell.textContent = label;
+    grid.appendChild(hourCell);
+  });
+
+  const cellMap = new Map();
+  let coverageSum = 0;
+  let coverageCount = 0;
+  cells.forEach((cell) => {
+    const key = fingerprintCellKey(cell.weekday, cell.hour);
+    cellMap.set(key, cell);
+    const coverage = Number(cell.coverage_ratio);
+    if (Number.isFinite(coverage) && coverage > 0) {
+      coverageSum += coverage;
+      coverageCount += 1;
+    }
+  });
+
+  let minValue = Number.POSITIVE_INFINITY;
+  let maxValue = Number.NEGATIVE_INFINITY;
+
+  for (let weekday = 0; weekday < FINGERPRINT_WEEKDAY_SHORT.length; weekday += 1) {
+    const dayLabel = document.createElement('div');
+    dayLabel.className = 'fingerprint-grid__day';
+    dayLabel.textContent = FINGERPRINT_WEEKDAY_SHORT[weekday] ?? `Day ${weekday}`;
+    grid.appendChild(dayLabel);
+
+    for (let hour = 0; hour < FINGERPRINT_HOUR_LABELS.length; hour += 1) {
+      const cellData = cellMap.get(fingerprintCellKey(weekday, hour));
+      const occupancy = Number(cellData?.metrics?.occupation_utilization_pct ?? 0);
+      const coverage = Number(cellData?.coverage_ratio ?? 0);
+      const cellEl = document.createElement('div');
+      cellEl.className = 'fingerprint-grid__cell';
+      const color = fingerprintColorForValue(occupancy);
+      cellEl.style.setProperty('--heat-color', color);
+      cellEl.style.background = color;
+      if (coverage > 0 && coverage < 0.75) {
+        cellEl.classList.add(coverage < 0.4 ? 'is-low-coverage' : 'is-medium-coverage');
+      }
+      const label = cellData?.label || formatFingerprintCellLabel(weekday, hour);
+      const occupancyLabel = formatPercent(occupancy, 0);
+      const coverageLabel = Number.isFinite(coverage) && coverage > 0 ? formatRatioPercent(coverage, 0) : null;
+      cellEl.title = coverageLabel
+        ? `${label} · ${occupancyLabel} occupied · ${coverageLabel} coverage`
+        : `${label} · ${occupancyLabel} occupied`;
+      cellEl.dataset.value = String(Math.round(Math.min(Math.max(occupancy, 0), 100)));
+      if (Number.isFinite(occupancy)) {
+        minValue = Math.min(minValue, occupancy);
+        maxValue = Math.max(maxValue, occupancy);
+      }
+      grid.appendChild(cellEl);
+    }
+  }
+
+  if (visual) {
+    visual.appendChild(grid);
+  }
+  if (legendMinEl) {
+    legendMinEl.textContent = Number.isFinite(minValue) ? formatPercent(minValue, 0) : '0%';
+  }
+  if (legendMaxEl) {
+    legendMaxEl.textContent = Number.isFinite(maxValue) ? formatPercent(maxValue, 0) : '100%';
+  }
+  if (coverageEl) {
+    if (coverageCount > 0) {
+      const averageCoverage = coverageSum / coverageCount;
+      coverageEl.textContent = `Average coverage ${formatRatioPercent(averageCoverage, 0)}`;
+      coverageEl.hidden = false;
+    } else {
+      coverageEl.textContent = '';
+      coverageEl.hidden = true;
+    }
+  }
+  if (generatedEl) {
+    const generatedText = fingerprint?.generated ? formatDateTime(fingerprint.generated) : null;
+    if (generatedText && generatedText !== '–') {
+      generatedEl.textContent = `Fingerprint generated ${generatedText}`;
+      generatedEl.hidden = false;
+    } else {
+      generatedEl.textContent = '';
+      generatedEl.hidden = true;
+    }
+  }
+  if (busiestList) {
+    renderStationFingerprintList(busiestList, fingerprint?.busiest, 'No busy windows detected yet.');
+  }
+  if (quietestList) {
+    renderStationFingerprintList(quietestList, fingerprint?.quietest, 'No quiet windows detected yet.');
+  }
+  if (metaEl && metaEl.dataset.metaState === 'pending') {
+    const portCount = Number(fingerprint?.port_count);
+    if (Number.isFinite(portCount) && portCount > 0) {
+      metaEl.textContent = `${formatNumber(portCount)} port${portCount === 1 ? '' : 's'} monitored.`;
+      metaEl.dataset.metaState = 'provided';
+    }
+  }
+};
+
+const updateStationHeatmapStatusSummary = () => {
+  if (!stationHeatmapStatus) {
+    return;
+  }
+  if (stationHeatmapPending > 0) {
+    const total = stationHeatmapCards.size;
+    const loaded = Math.max(total - stationHeatmapPending, 0);
+    stationHeatmapStatus.textContent = `Loading station fingerprints… (${formatNumber(loaded)} of ${formatNumber(total)} ready)`;
+    return;
+  }
+  if (stationHeatmapCards.size > 0) {
+    const total = stationHeatmapCards.size;
+    stationHeatmapStatus.textContent = `Showing weekly fingerprints for ${formatNumber(total)} station${total === 1 ? '' : 's'}.`;
+  } else {
+    stationHeatmapStatus.textContent = 'No station fingerprint data available yet.';
+  }
+};
+
+const loadStationFingerprint = async (sequence, locationId, station, card) => {
+  const stationIdRaw = station?.station_id ?? station;
+  const stationId = stationIdRaw === null || stationIdRaw === undefined ? null : String(stationIdRaw).trim();
+  if (!stationId) {
+    if (card?.statusEl) {
+      card.statusEl.textContent = 'Station identifier unavailable.';
+      card.statusEl.hidden = false;
+    }
+    if (card?.visual) {
+      card.visual.classList.remove('is-loading');
+    }
+    stationHeatmapPending = Math.max(0, stationHeatmapPending - 1);
+    updateStationHeatmapStatusSummary();
+    return;
+  }
+  try {
+    const response = await fetch(
+      `${API_BASE}/stations/${encodeURIComponent(locationId)}/${encodeURIComponent(stationId)}/fingerprint`,
+    );
+    if (sequence !== stationHeatmapSequence) {
+      return;
+    }
+    if (response.status === 404) {
+      if (card?.visual) {
+        card.visual.classList.remove('is-loading');
+      }
+      if (card?.statusEl) {
+        card.statusEl.textContent = 'Not enough telemetry to build this fingerprint yet.';
+        card.statusEl.hidden = false;
+      }
+      return;
+    }
+    if (!response.ok) {
+      throw new Error(`Backend returned ${response.status}`);
+    }
+    const fingerprint = await response.json();
+    if (sequence !== stationHeatmapSequence) {
+      return;
+    }
+    renderStationFingerprint(card, fingerprint);
+  } catch (error) {
+    if (sequence !== stationHeatmapSequence) {
+      return;
+    }
+    console.error(error);
+    if (card?.visual) {
+      card.visual.classList.remove('is-loading');
+    }
+    if (card?.statusEl) {
+      card.statusEl.textContent = 'Unable to load fingerprint.';
+      card.statusEl.hidden = false;
+    }
+  } finally {
+    if (sequence !== stationHeatmapSequence) {
+      return;
+    }
+    stationHeatmapPending = Math.max(0, stationHeatmapPending - 1);
+    updateStationHeatmapStatusSummary();
+  }
+};
+
+const resetStationHeatmaps = (message) => {
+  stationHeatmapSequence += 1;
+  stationHeatmapPending = 0;
+  stationHeatmapCards.clear();
+  if (stationHeatmapContainer) {
+    stationHeatmapContainer.innerHTML = '';
+  }
+  if (stationHeatmapStatus && message !== undefined) {
+    stationHeatmapStatus.textContent = message;
+  }
+  return stationHeatmapSequence;
+};
+
+const updateStationHeatmaps = (locationId, stations) => {
+  if (!stationHeatmapSection || !stationHeatmapContainer || !stationHeatmapStatus) {
+    return;
+  }
+  const sequence = resetStationHeatmaps('Loading station fingerprints…');
+  const stationList = Array.isArray(stations)
+    ? stations.filter((entry) => entry && entry.station_id !== null && entry.station_id !== undefined)
+    : [];
+  if (stationList.length === 0) {
+    stationHeatmapStatus.textContent = 'Station fingerprint heatmaps will appear once telemetry is available.';
+    return;
+  }
+  stationHeatmapPending = stationList.length;
+  stationList.forEach((station) => {
+    const card = createStationHeatmapCard(station);
+    stationHeatmapContainer.appendChild(card.card);
+    stationHeatmapCards.set(String(station.station_id), card);
+    loadStationFingerprint(sequence, locationId, station, card);
+  });
+  updateStationHeatmapStatusSummary();
+};
+
 const renderLocationUsageChart = (chart, canvas, statusEl, timeline, granularity) => {
   if (!canvas) {
     if (statusEl) {
@@ -3009,6 +3470,7 @@ const populateLocationDetail = (locationId, details) => {
     'day',
   );
 
+  updateStationHeatmaps(locationId, details?.stations);
   updateLocationMap(details?.coordinates);
 };
 
@@ -3047,6 +3509,7 @@ const fetchLocationDetails = async (locationId) => {
     }
     setLocationLoading(null);
     setLocationError(error.message || 'Unable to load location details.');
+    resetStationHeatmaps('Unable to load station fingerprints.');
     updateLocationMap(null);
   }
 };
@@ -3061,6 +3524,7 @@ const initLocationDetailPage = () => {
   if (!locationId) {
     setLocationLoading(null);
     setLocationError('No location specified.');
+    resetStationHeatmaps('No station data available for this view.');
     return;
   }
   fetchLocationDetails(locationId);

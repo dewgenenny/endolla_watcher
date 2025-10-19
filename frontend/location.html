@@ -119,6 +119,22 @@
           </div>
         </article>
       </section>
+      <section class="section station-heatmaps" id="station-heatmaps">
+        <div class="section-header">
+          <div class="section-title">
+            <h3>Station fingerprints</h3>
+            <p class="muted">
+              Weekly utilization patterns for every station at this location.
+            </p>
+          </div>
+        </div>
+        <p class="muted" id="station-heatmap-status">Loading station fingerprints…</p>
+        <div
+          id="station-heatmap-container"
+          class="station-heatmap-grid"
+          aria-live="polite"
+        ></div>
+      </section>
       <section class="section location-map-section">
         <h3>Map</h3>
         <div id="location-map" class="location-map" role="presentation"></div>
