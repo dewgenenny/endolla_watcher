@@ -155,6 +155,11 @@ const HEATMAP_COLOR_STOPS = [
   { stop: 0.5, h: 45, s: 95, l: 55 },
   { stop: 1, h: 0, s: 85, l: 45 },
 ];
+const FINGERPRINT_COLOR_STOPS = [
+  { stop: 0, h: 120, s: 70, l: 90 },
+  { stop: 0.5, h: 45, s: 90, l: 68 },
+  { stop: 1, h: 0, s: 85, l: 46 },
+];
 const NEAR_ME_DEFAULT_LIMIT = 3;
 
 const FINGERPRINT_WEEKDAY_LABELS = [
@@ -2185,10 +2190,26 @@ const fingerprintColorForValue = (value) => {
     return 'rgba(148, 163, 184, 0.18)';
   }
   const ratio = Math.min(Math.max(numeric, 0), 100) / 100;
-  const hue = 210 - ratio * 160;
-  const saturation = 70 + ratio * 20;
-  const lightness = 92 - ratio * 55;
-  return `hsl(${hue.toFixed(1)}deg, ${saturation.toFixed(1)}%, ${lightness.toFixed(1)}%)`;
+  for (let index = 0; index < FINGERPRINT_COLOR_STOPS.length - 1; index += 1) {
+    const current = FINGERPRINT_COLOR_STOPS[index];
+    const next = FINGERPRINT_COLOR_STOPS[index + 1];
+    if (!current || !next) {
+      continue;
+    }
+    if (ratio <= next.stop) {
+      const span = next.stop - current.stop;
+      const progress = span === 0 ? 0 : (ratio - current.stop) / span;
+      const hue = current.h + (next.h - current.h) * progress;
+      const saturation = current.s + (next.s - current.s) * progress;
+      const lightness = current.l + (next.l - current.l) * progress;
+      return `hsl(${hue.toFixed(1)}deg, ${saturation.toFixed(1)}%, ${lightness.toFixed(1)}%)`;
+    }
+  }
+  const last = FINGERPRINT_COLOR_STOPS[FINGERPRINT_COLOR_STOPS.length - 1];
+  if (!last) {
+    return 'rgba(148, 163, 184, 0.18)';
+  }
+  return `hsl(${last.h.toFixed(1)}deg, ${last.s.toFixed(1)}%, ${last.l.toFixed(1)}%)`;
 };
 
 const formatFingerprintHourTick = (hour) => {
