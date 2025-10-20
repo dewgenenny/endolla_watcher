@@ -151,8 +151,8 @@ const HEATMAP_METRICS = {
 };
 const HEATMAP_DEFAULT_METRIC = 'occupation_utilization_pct';
 const HEATMAP_COLOR_STOPS = [
-  { stop: 0, h: 210, s: 85, l: 55 },
-  { stop: 0.5, h: 120, s: 85, l: 50 },
+  { stop: 0, h: 120, s: 80, l: 45 },
+  { stop: 0.5, h: 45, s: 95, l: 55 },
   { stop: 1, h: 0, s: 85, l: 45 },
 ];
 const NEAR_ME_DEFAULT_LIMIT = 3;
@@ -1032,9 +1032,9 @@ const ensureHeatmapMap = () => {
             ['linear'],
             ['get', 'intensity'],
             0,
-            'hsl(210, 85%, 55%)',
+            'hsl(120, 80%, 45%)',
             0.5,
-            'hsl(120, 85%, 50%)',
+            'hsl(45, 95%, 55%)',
             1,
             'hsl(0, 85%, 45%)',
           ],
