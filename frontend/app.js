@@ -150,6 +150,11 @@ const HEATMAP_METRICS = {
   },
 };
 const HEATMAP_DEFAULT_METRIC = 'occupation_utilization_pct';
+const HEATMAP_COLOR_STOPS = [
+  { stop: 0, h: 210, s: 85, l: 55 },
+  { stop: 0.5, h: 120, s: 85, l: 50 },
+  { stop: 1, h: 0, s: 85, l: 45 },
+];
 const NEAR_ME_DEFAULT_LIMIT = 3;
 
 const FINGERPRINT_WEEKDAY_LABELS = [
@@ -1229,6 +1234,59 @@ const clearHeatmapLayers = () => {
   heatmapPendingBounds = undefined;
 };
 
+function heatmapColorForValue(value) {
+  if (!Array.isArray(HEATMAP_COLOR_STOPS) || HEATMAP_COLOR_STOPS.length === 0) {
+    return '';
+  }
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return '';
+  }
+  const clamped = Math.min(Math.max(numeric, 0), 100);
+  const intensity = clamped / 100;
+  for (let index = 0; index < HEATMAP_COLOR_STOPS.length - 1; index += 1) {
+    const current = HEATMAP_COLOR_STOPS[index];
+    const next = HEATMAP_COLOR_STOPS[index + 1];
+    if (!current || !next) {
+      continue;
+    }
+    if (intensity <= next.stop) {
+      const span = next.stop - current.stop;
+      const progress = span === 0 ? 0 : (intensity - current.stop) / span;
+      const hue = current.h + (next.h - current.h) * progress;
+      const saturation = current.s + (next.s - current.s) * progress;
+      const lightness = current.l + (next.l - current.l) * progress;
+      return `hsl(${hue.toFixed(1)}deg, ${saturation.toFixed(1)}%, ${lightness.toFixed(1)}%)`;
+    }
+  }
+  const last = HEATMAP_COLOR_STOPS[HEATMAP_COLOR_STOPS.length - 1];
+  if (!last) {
+    return '';
+  }
+  return `hsl(${last.h.toFixed(1)}deg, ${last.s.toFixed(1)}%, ${last.l.toFixed(1)}%)`;
+}
+
+function createHeatmapTableLegend(metricLabel) {
+  const resolvedLabel = typeof metricLabel === 'string' && metricLabel.trim()
+    ? metricLabel.trim()
+    : 'Utilization';
+  const legend = document.createElement('div');
+  legend.className = 'heatmap-table-legend';
+  legend.setAttribute('role', 'group');
+  legend.setAttribute('aria-label', `${resolvedLabel} colour key`);
+  const lower = document.createElement('span');
+  lower.className = 'heatmap-table-legend__text';
+  lower.textContent = `Lower ${resolvedLabel.toLowerCase()}`;
+  const gradient = document.createElement('div');
+  gradient.className = 'heatmap-table-legend-gradient';
+  gradient.setAttribute('aria-hidden', 'true');
+  const higher = document.createElement('span');
+  higher.className = 'heatmap-table-legend__text';
+  higher.textContent = `Higher ${resolvedLabel.toLowerCase()}`;
+  legend.append(lower, gradient, higher);
+  return legend;
+}
+
 const renderHeatmapList = (entries, metricKey) => {
   if (!heatmapListContainer) {
     return;
@@ -1238,6 +1296,10 @@ const renderHeatmapList = (entries, metricKey) => {
   const label = definition?.label ?? 'Utilization';
   const sorted = entries.slice().sort((a, b) => b.value - a.value);
   const limit = Math.min(sorted.length, 15);
+
+  if (limit > 0) {
+    heatmapListContainer.appendChild(createHeatmapTableLegend(label));
+  }
 
   const wrapper = document.createElement('div');
   wrapper.className = 'table-scroll';
@@ -1287,7 +1349,18 @@ const renderHeatmapList = (entries, metricKey) => {
     tr.appendChild(portCell);
 
     const metricCell = document.createElement('td');
-    metricCell.textContent = formatPercent(entry.value, 1);
+    metricCell.className = 'heatmap-metric-cell';
+    const metricSwatch = document.createElement('span');
+    metricSwatch.className = 'heatmap-metric-cell__swatch';
+    metricSwatch.setAttribute('aria-hidden', 'true');
+    const metricColour = heatmapColorForValue(entry.value);
+    if (metricColour) {
+      metricSwatch.style.setProperty('--heatmap-metric-color', metricColour);
+    }
+    const metricValue = document.createElement('span');
+    metricValue.className = 'heatmap-metric-cell__value';
+    metricValue.textContent = formatPercent(entry.value, 1);
+    metricCell.append(metricSwatch, metricValue);
     tr.appendChild(metricCell);
 
     tbody.appendChild(tr);
@@ -2171,21 +2244,6 @@ const describeStationMeta = (station) => {
   return parts.join(' · ');
 };
 
-const createStationHeatmapInsight = (title) => {
-  const container = document.createElement('div');
-  const heading = document.createElement('h5');
-  heading.className = 'station-heatmap-insight__title';
-  heading.textContent = title;
-  const list = document.createElement('ul');
-  list.className = 'station-heatmap-list';
-  const placeholder = document.createElement('li');
-  placeholder.className = 'station-heatmap-list-empty';
-  placeholder.textContent = 'Loading…';
-  list.appendChild(placeholder);
-  container.append(heading, list);
-  return { container, list };
-};
-
 const createStationHeatmapCard = (station) => {
   const card = document.createElement('article');
   card.className = 'card station-heatmap-card';
@@ -2255,13 +2313,6 @@ const createStationHeatmapCard = (station) => {
   legend.append(legendMin, legendBar, legendMax);
   body.appendChild(legend);
 
-  const insights = document.createElement('div');
-  insights.className = 'station-heatmap-insights';
-  const busiest = createStationHeatmapInsight('Busiest windows');
-  const quietest = createStationHeatmapInsight('Quietest windows');
-  insights.append(busiest.container, quietest.container);
-  body.appendChild(insights);
-
   return {
     card,
     statusEl,
@@ -2270,44 +2321,8 @@ const createStationHeatmapCard = (station) => {
     legendMaxEl: legendMax,
     coverageEl,
     generatedEl: generated,
-    busiestList: busiest.list,
-    quietestList: quietest.list,
     metaEl: meta,
   };
-};
-
-const renderStationFingerprintList = (listEl, entries, emptyText) => {
-  if (!listEl) {
-    return;
-  }
-  listEl.innerHTML = '';
-  if (!Array.isArray(entries) || entries.length === 0) {
-    const empty = document.createElement('li');
-    empty.className = 'station-heatmap-list-empty';
-    empty.textContent = emptyText;
-    listEl.appendChild(empty);
-    return;
-  }
-  entries.forEach((entry) => {
-    const item = document.createElement('li');
-    const label = document.createElement('span');
-    label.className = 'station-heatmap-list-label';
-    label.textContent = entry.label || formatFingerprintCellLabel(entry.weekday, entry.hour);
-    const meta = document.createElement('span');
-    meta.className = 'station-heatmap-list-meta';
-    const occupancyValue = Number(entry.occupation_utilization_pct ?? 0);
-    meta.textContent = formatPercent(occupancyValue, 0);
-    const coverage = Number(entry.coverage_ratio);
-    if (Number.isFinite(coverage) && coverage > 0) {
-      meta.appendChild(document.createTextNode(' '));
-      const badge = document.createElement('span');
-      badge.className = 'station-heatmap-coverage-badge';
-      badge.textContent = formatRatioPercent(coverage, 0);
-      meta.appendChild(badge);
-    }
-    item.append(label, meta);
-    listEl.appendChild(item);
-  });
 };
 
 const renderStationFingerprint = (card, fingerprint) => {
@@ -2321,8 +2336,6 @@ const renderStationFingerprint = (card, fingerprint) => {
     legendMaxEl,
     coverageEl,
     generatedEl,
-    busiestList,
-    quietestList,
     metaEl,
   } = card;
   if (visual) {
@@ -2433,12 +2446,6 @@ const renderStationFingerprint = (card, fingerprint) => {
       generatedEl.textContent = '';
       generatedEl.hidden = true;
     }
-  }
-  if (busiestList) {
-    renderStationFingerprintList(busiestList, fingerprint?.busiest, 'No busy windows detected yet.');
-  }
-  if (quietestList) {
-    renderStationFingerprintList(quietestList, fingerprint?.quietest, 'No quiet windows detected yet.');
   }
   if (metaEl && metaEl.dataset.metaState === 'pending') {
     const portCount = Number(fingerprint?.port_count);
