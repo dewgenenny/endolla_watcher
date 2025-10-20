@@ -2186,7 +2186,7 @@ const fingerprintCellKey = (weekday, hour) => `${weekday}-${hour}`;
 
 const fingerprintColorForValue = (value) => {
   const numeric = Number(value);
-  if (!Number.isFinite(numeric) || numeric <= 0) {
+  if (!Number.isFinite(numeric) || numeric < 0) {
     return 'rgba(148, 163, 184, 0.18)';
   }
   const ratio = Math.min(Math.max(numeric, 0), 100) / 100;
