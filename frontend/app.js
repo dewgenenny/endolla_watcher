@@ -2901,9 +2901,20 @@ const renderNearMeResults = (locations) => {
 
     const header = document.createElement('div');
     header.className = 'near-me-card__header';
+    const rawLocationId = location?.location_id;
+    const locationId = rawLocationId == null ? null : String(rawLocationId);
+    const titleText = location?.address || `Location ${locationId ?? ''}`.trim();
     const title = document.createElement('h3');
     title.className = 'near-me-card__title';
-    title.textContent = location?.address || `Location ${location?.location_id ?? ''}`.trim();
+    if (locationId !== null) {
+      const titleLink = document.createElement('a');
+      titleLink.className = 'near-me-card__link';
+      titleLink.href = `location.html?id=${encodeURIComponent(locationId)}`;
+      titleLink.textContent = titleText;
+      title.appendChild(titleLink);
+    } else {
+      title.textContent = titleText;
+    }
     header.appendChild(title);
 
     const distanceBadge = document.createElement('span');
@@ -2914,7 +2925,7 @@ const renderNearMeResults = (locations) => {
 
     const idLine = document.createElement('p');
     idLine.className = 'near-me-card__id muted';
-    idLine.textContent = `Location ${location?.location_id ?? 'unknown'}`;
+    idLine.textContent = `Location ${locationId ?? 'unknown'}`;
     body.appendChild(idLine);
 
     const stationCount = Number(location?.station_count);
