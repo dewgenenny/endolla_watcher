@@ -1296,7 +1296,7 @@ main {
   flex: 1;
   height: 12px;
   border-radius: 999px;
-  background: linear-gradient(90deg, #1d4ed8 0%, #22c55e 45%, #f97316 75%, #be123c 100%);
+  background: linear-gradient(90deg, #22c55e 0%, #facc15 50%, #dc2626 100%);
   box-shadow: inset 0 0 0 1px var(--stroke-1);
 }
 
@@ -1351,8 +1351,8 @@ main {
   border-radius: 999px;
   background: linear-gradient(
     90deg,
-    hsl(210deg 85% 55%) 0%,
-    hsl(120deg 85% 50%) 50%,
+    hsl(120deg 80% 45%) 0%,
+    hsl(45deg 95% 55%) 50%,
     hsl(0deg 85% 45%) 100%
   );
   box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.08);
