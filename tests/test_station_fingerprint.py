@@ -52,7 +52,7 @@ def _record(conn, ts, status, port):
 def test_station_fingerprint_heatmap(conn):
     reference = datetime(2025, 1, 8, 2, tzinfo=timezone.utc)
     midnight = reference.replace(hour=0, minute=0, second=0, microsecond=0)
-    start = midnight - timedelta(days=7)
+    start = midnight - timedelta(days=28)
 
     # Seed baseline availability prior to the aggregation window.
     baseline = start - timedelta(hours=2)
@@ -74,7 +74,10 @@ def test_station_fingerprint_heatmap(conn):
     assert fingerprint["location_id"] == "L1"
     assert fingerprint["station_id"] == "S1"
     assert fingerprint["port_count"] == 2
-    assert len(fingerprint["cells"]) == 7 * 24
+    span = datetime.fromisoformat(fingerprint["end"]) - datetime.fromisoformat(
+        fingerprint["start"]
+    )
+    assert len(fingerprint["cells"]) == int(span.total_seconds() // 3600)
 
     target_start = busy_start.isoformat()
     matching = [cell for cell in fingerprint["cells"] if cell["start"] == target_start]
@@ -92,6 +95,61 @@ def test_station_fingerprint_heatmap(conn):
     assert cached is not None
     assert cached["start"] == fingerprint["start"]
     assert cached["end"] == fingerprint["end"]
+
+
+def test_station_fingerprint_rolls_forward(conn):
+    reference = datetime(2025, 1, 8, 2, tzinfo=timezone.utc)
+    midnight = reference.replace(hour=0, minute=0, second=0, microsecond=0)
+    start = midnight - timedelta(days=28)
+
+    baseline = start - timedelta(hours=2)
+    for port in ("P1", "P2"):
+        _record(conn, baseline, "AVAILABLE", port)
+
+    busy_start = start + timedelta(days=5, hours=9)
+    busy_mid = busy_start + timedelta(hours=1)
+    busy_end = busy_start + timedelta(hours=2)
+
+    _record(conn, busy_start, "IN_USE", "P1")
+    _record(conn, busy_end, "AVAILABLE", "P1")
+
+    _record(conn, busy_mid, "IN_USE", "P2")
+    _record(conn, busy_end + timedelta(hours=1), "AVAILABLE", "P2")
+
+    fingerprint = storage.station_fingerprint(conn, "L1", "S1", reference=reference)
+    assert fingerprint is not None
+    storage.save_station_fingerprint(conn, fingerprint)
+
+    next_reference = reference + timedelta(days=1)
+    next_midnight = midnight + timedelta(days=1)
+    next_busy_start = next_midnight + timedelta(hours=9)
+    next_busy_mid = next_busy_start + timedelta(hours=1)
+    next_busy_end = next_busy_start + timedelta(hours=2)
+
+    _record(conn, next_busy_start - timedelta(hours=1), "AVAILABLE", "P1")
+    _record(conn, next_busy_start, "IN_USE", "P1")
+    _record(conn, next_busy_end, "AVAILABLE", "P1")
+
+    _record(conn, next_busy_mid, "IN_USE", "P2")
+    _record(conn, next_busy_end + timedelta(hours=1), "AVAILABLE", "P2")
+
+    updated = storage.station_fingerprint(
+        conn, "L1", "S1", reference=next_reference
+    )
+    assert updated is not None
+
+    first_start = datetime.fromisoformat(fingerprint["start"])
+    first_end = datetime.fromisoformat(fingerprint["end"])
+    second_start = datetime.fromisoformat(updated["start"])
+    second_end = datetime.fromisoformat(updated["end"])
+
+    assert second_start == first_start + timedelta(days=1)
+    assert second_end == first_end + timedelta(days=1)
+
+    assert any(cell["start"] == busy_start.isoformat() for cell in updated["cells"])
+    assert any(
+        cell["start"] == next_busy_start.isoformat() for cell in updated["cells"]
+    )
 
 
 def test_station_fingerprint_queue(conn):

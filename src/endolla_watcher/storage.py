@@ -524,6 +524,29 @@ def _station_history_between(
     return history
 
 
+def _station_earliest_status(
+    conn: Connection, location_id: str | None, station_id: str | None
+) -> datetime | None:
+    """Return the earliest timestamp recorded for a station."""
+
+    with _with_cursor(conn) as cur:
+        cur.execute(
+            """
+            SELECT MIN(ts)
+            FROM port_status
+            WHERE location_id <=> %s AND station_id <=> %s
+            """,
+            (location_id, station_id),
+        )
+        row = cur.fetchone()
+    if not row or not row[0]:
+        return None
+    try:
+        return datetime.fromisoformat(row[0])
+    except (TypeError, ValueError):
+        return None
+
+
 def recent_sessions(conn: Connection, since: datetime) -> Dict[PortKey, List[float]]:
     history = _recent_status_history(conn, since)
     return {k: _session_durations(v) for k, v in history.items()}
@@ -1252,12 +1275,12 @@ def location_usage(
 
 
 def _station_fingerprint_range(reference: datetime) -> tuple[datetime, datetime]:
-    """Return the 7-day range ending at the most recent midnight."""
+    """Return the 28-day range ending at the most recent midnight."""
 
     midnight = reference.replace(hour=0, minute=0, second=0, microsecond=0)
     if reference < midnight:
         midnight -= timedelta(days=1)
-    start = midnight - timedelta(days=7)
+    start = midnight - timedelta(days=28)
     return start, midnight
 
 
@@ -1282,63 +1305,106 @@ def station_fingerprint(
     *,
     reference: datetime | None = None,
 ) -> Dict[str, Any] | None:
-    """Compute a weekly fingerprint heatmap for a station."""
+    """Compute a 4-week fingerprint heatmap for a station."""
 
     if reference is None:
         reference = datetime.now().astimezone()
     if reference.tzinfo is None:
         reference = reference.replace(tzinfo=timezone.utc)
 
-    start, end = _station_fingerprint_range(reference)
-    history = _station_history_between(conn, location_id, station_id, start, end)
-    if not history:
+    base_start, end = _station_fingerprint_range(reference)
+    earliest = _station_earliest_status(conn, location_id, station_id)
+    if earliest is None:
+        return None
+    if earliest.tzinfo is None:
+        earliest = earliest.replace(tzinfo=timezone.utc)
+    earliest_floor = earliest.replace(minute=0, second=0, microsecond=0)
+    start = max(base_start, earliest_floor)
+    if start >= end:
         return None
 
-    generated = datetime.now().astimezone()
-    buckets: Dict[datetime, Dict[str, float]] = {}
-    for events in history.values():
-        intervals = _status_intervals(events, end=end)
-        for interval_start, interval_end, status in intervals:
-            if interval_end <= start or interval_start >= end:
-                continue
-            seg_start = max(interval_start, start)
-            seg_end = min(interval_end, end)
-            if seg_end <= seg_start:
-                continue
-            current = seg_start
-            while current < seg_end:
-                bucket_start = current.replace(minute=0, second=0, microsecond=0)
-                bucket_end = min(bucket_start + timedelta(hours=1), seg_end)
-                if bucket_end <= current:
-                    break
-                duration = (bucket_end - current).total_seconds()
-                totals = buckets.setdefault(bucket_start, _empty_totals())
-                totals["monitored_seconds"] = (
-                    totals.get("monitored_seconds", 0.0) + duration
-                )
-                if status is not None and status not in UNAVAILABLE_STATUSES:
-                    totals["available_seconds"] = (
-                        totals.get("available_seconds", 0.0) + duration
-                    )
-                if status in OCCUPIED_STATUSES:
-                    totals["occupied_seconds"] = (
-                        totals.get("occupied_seconds", 0.0) + duration
-                    )
-                if status in ACTIVE_CHARGING_STATUSES:
-                    totals["active_seconds"] = (
-                        totals.get("active_seconds", 0.0) + duration
-                    )
-                current = bucket_end
+    previous = latest_station_fingerprint(conn, location_id, station_id)
+    previous_cells: Dict[datetime, Dict[str, Any]] = {}
+    previous_port_count = 0
+    previous_end: datetime | None = None
+    if previous:
+        try:
+            previous_start = datetime.fromisoformat(previous.get("start"))
+            previous_end = datetime.fromisoformat(previous.get("end"))
+        except (TypeError, ValueError):
+            previous_start = None
+            previous_end = None
+        previous_port_count = int(previous.get("port_count") or 0)
+        if previous_start and previous_end:
+            overlap_end = min(previous_end, end)
+            for cell in previous.get("cells") or []:
+                start_str = cell.get("start") if isinstance(cell, dict) else None
+                if not isinstance(start_str, str):
+                    continue
+                try:
+                    cell_start = datetime.fromisoformat(start_str)
+                except (TypeError, ValueError):
+                    continue
+                if cell_start.tzinfo is None:
+                    cell_start = cell_start.replace(tzinfo=timezone.utc)
+                if start <= cell_start < overlap_end:
+                    previous_cells[cell_start] = cell
 
-    port_count = len([port for port in history.keys() if port is not None])
+    missing_starts: List[datetime] = []
+    cursor = start
+    while cursor < end:
+        if cursor not in previous_cells:
+            missing_starts.append(cursor)
+        cursor += timedelta(hours=1)
+
+    compute_start = min(missing_starts) if missing_starts else None
+    computed_totals: Dict[datetime, Dict[str, float]] = {}
+    computed_port_count = 0
+    if compute_start is not None:
+        history = _station_history_between(
+            conn, location_id, station_id, compute_start, end
+        )
+        if history:
+            computed_port_count = len([port for port in history.keys() if port is not None])
+        for events in history.values():
+            intervals = _status_intervals(events, end=end)
+            for interval_start, interval_end, status in intervals:
+                if interval_end <= compute_start or interval_start >= end:
+                    continue
+                seg_start = max(interval_start, compute_start)
+                seg_end = min(interval_end, end)
+                if seg_end <= seg_start:
+                    continue
+                current = seg_start
+                while current < seg_end:
+                    bucket_start = current.replace(minute=0, second=0, microsecond=0)
+                    bucket_end = min(bucket_start + timedelta(hours=1), seg_end)
+                    if bucket_end <= current:
+                        break
+                    duration = (bucket_end - current).total_seconds()
+                    totals = computed_totals.setdefault(bucket_start, _empty_totals())
+                    totals["monitored_seconds"] = (
+                        totals.get("monitored_seconds", 0.0) + duration
+                    )
+                    if status is not None and status not in UNAVAILABLE_STATUSES:
+                        totals["available_seconds"] = (
+                            totals.get("available_seconds", 0.0) + duration
+                        )
+                    if status in OCCUPIED_STATUSES:
+                        totals["occupied_seconds"] = (
+                            totals.get("occupied_seconds", 0.0) + duration
+                        )
+                    if status in ACTIVE_CHARGING_STATUSES:
+                        totals["active_seconds"] = (
+                            totals.get("active_seconds", 0.0) + duration
+                        )
+                    current = bucket_end
+
+    port_count = max(previous_port_count, computed_port_count)
     total_capacity_seconds = port_count * 3600 if port_count else 0
 
-    cells: List[Dict[str, Any]] = []
-    current = start
-    while current < end:
-        bucket_end = current + timedelta(hours=1)
-        totals = buckets.get(current, _empty_totals())
-        metrics = _format_utilization_metrics(totals) if totals.get("monitored_seconds") else {
+    def _empty_metrics() -> Dict[str, float]:
+        return {
             "sessions": 0,
             "monitored_seconds": 0.0,
             "monitored_hours": 0.0,
@@ -1352,25 +1418,76 @@ def station_fingerprint(
             "active_charging_utilization_pct": 0.0,
             "availability_ratio": 0.0,
         }
-        metrics["monitored_seconds"] = totals.get("monitored_seconds", 0.0)
-        metrics["available_seconds"] = totals.get("available_seconds", 0.0)
-        metrics["occupied_seconds"] = totals.get("occupied_seconds", 0.0)
-        metrics["active_seconds"] = totals.get("active_seconds", 0.0)
-        capacity = total_capacity_seconds
-        coverage = (
-            metrics["monitored_seconds"] / capacity if capacity else 0.0
-        )
-        cell = {
-            "weekday": current.weekday(),
-            "hour": current.hour,
-            "start": current.isoformat(),
-            "end": bucket_end.isoformat(),
-            "metrics": metrics,
-            "coverage_ratio": coverage,
-            "label": _format_weekday_label(current.weekday(), current.hour),
-        }
+
+    cells: List[Dict[str, Any]] = []
+    current = start
+    while current < end:
+        bucket_end = current + timedelta(hours=1)
+        if current in computed_totals:
+            totals = computed_totals.get(current, _empty_totals())
+            metrics = (
+                _format_utilization_metrics(totals)
+                if totals.get("monitored_seconds")
+                else _empty_metrics()
+            )
+            metrics["monitored_seconds"] = totals.get("monitored_seconds", 0.0)
+            metrics["available_seconds"] = totals.get("available_seconds", 0.0)
+            metrics["occupied_seconds"] = totals.get("occupied_seconds", 0.0)
+            metrics["active_seconds"] = totals.get("active_seconds", 0.0)
+            coverage = (
+                metrics["monitored_seconds"] / total_capacity_seconds
+                if total_capacity_seconds
+                else 0.0
+            )
+            cell = {
+                "weekday": current.weekday(),
+                "hour": current.hour,
+                "start": current.isoformat(),
+                "end": bucket_end.isoformat(),
+                "metrics": metrics,
+                "coverage_ratio": coverage,
+                "label": _format_weekday_label(current.weekday(), current.hour),
+            }
+        elif current in previous_cells:
+            stored = previous_cells[current]
+            metrics = stored.get("metrics") if isinstance(stored, dict) else None
+            cell = {
+                "weekday": stored.get("weekday", current.weekday())
+                if isinstance(stored, dict)
+                else current.weekday(),
+                "hour": stored.get("hour", current.hour)
+                if isinstance(stored, dict)
+                else current.hour,
+                "start": stored.get("start", current.isoformat())
+                if isinstance(stored, dict)
+                else current.isoformat(),
+                "end": stored.get("end", bucket_end.isoformat())
+                if isinstance(stored, dict)
+                else bucket_end.isoformat(),
+                "metrics": dict(metrics) if isinstance(metrics, dict) else _empty_metrics(),
+                "coverage_ratio": stored.get("coverage_ratio", 0.0)
+                if isinstance(stored, dict)
+                else 0.0,
+                "label": stored.get(
+                    "label", _format_weekday_label(current.weekday(), current.hour)
+                )
+                if isinstance(stored, dict)
+                else _format_weekday_label(current.weekday(), current.hour),
+            }
+        else:
+            cell = {
+                "weekday": current.weekday(),
+                "hour": current.hour,
+                "start": current.isoformat(),
+                "end": bucket_end.isoformat(),
+                "metrics": _empty_metrics(),
+                "coverage_ratio": 0.0,
+                "label": _format_weekday_label(current.weekday(), current.hour),
+            }
         cells.append(cell)
         current = bucket_end
+
+    generated = datetime.now().astimezone()
 
     def _top_cells(desc: bool) -> List[Dict[str, Any]]:
         filtered = [
