@@ -1017,11 +1017,11 @@ main {
   position: relative;
   display: grid;
   gap: 3px;
-  grid-template-columns: minmax(70px, 0.9fr) repeat(24, minmax(26px, 1fr));
-  grid-auto-rows: minmax(26px, 1fr);
+  grid-template-columns: minmax(88px, 1.05fr) repeat(7, minmax(68px, 1fr));
+  grid-auto-rows: minmax(28px, 1fr);
   font-size: 0.65rem;
-  min-inline-size: calc(70px + (24 * 26px) + (24 * 3px));
-  min-width: calc(70px + (24 * 26px) + (24 * 3px));
+  min-inline-size: calc(88px + (7 * 68px) + (7 * 3px));
+  min-width: calc(88px + (7 * 68px) + (7 * 3px));
 }
 
 .fingerprint-grid__corner,
@@ -1030,27 +1030,31 @@ main {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--text-3);
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+  color: var(--text-3);
 }
 
 .fingerprint-grid__corner {
   justify-content: flex-end;
-  padding-right: 6px;
+  align-items: flex-end;
+  padding: 0 8px 6px 0;
 }
 
 .fingerprint-grid__day {
-  justify-content: flex-end;
-  padding-right: 8px;
+  padding: 0 8px;
   color: var(--text-2);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
 }
 
 .fingerprint-grid__hour {
-  font-size: 0.58rem;
-  letter-spacing: 0.08em;
-  color: var(--text-3);
+  justify-content: flex-end;
+  padding-right: 10px;
+  color: var(--text-2);
+  font-size: 0.7rem;
+  font-variant-numeric: tabular-nums;
+  text-transform: none;
+  letter-spacing: 0;
 }
 
 .fingerprint-grid__cell {

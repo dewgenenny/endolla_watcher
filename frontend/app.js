@@ -2118,9 +2118,25 @@ const fingerprintColorForValue = (value) => {
   return `hsl(${hue.toFixed(1)}deg, ${saturation.toFixed(1)}%, ${lightness.toFixed(1)}%)`;
 };
 
+const formatFingerprintHourTick = (hour) => {
+  const numeric = Number(hour);
+  if (!Number.isFinite(numeric) || numeric < 0) {
+    return '';
+  }
+  if (numeric === 0) {
+    return 'Midnight';
+  }
+  if (numeric === 12) {
+    return 'Noon';
+  }
+  const period = numeric < 12 ? 'AM' : 'PM';
+  const hour12 = numeric % 12 || 12;
+  return `${hour12.toString().padStart(2, '0')}:00 ${period}`;
+};
+
 const formatFingerprintCellLabel = (weekday, hour) => {
   const day = FINGERPRINT_WEEKDAY_LABELS[weekday] ?? `Day ${weekday}`;
-  const hourLabel = FINGERPRINT_HOUR_LABELS[hour] ?? `${hour}:00`;
+  const hourLabel = formatFingerprintHourTick(hour) || FINGERPRINT_HOUR_LABELS[hour] || `${hour}:00`;
   return `${day} ${hourLabel}`;
 };
 
@@ -2333,11 +2349,11 @@ const renderStationFingerprint = (card, fingerprint) => {
   corner.className = 'fingerprint-grid__corner';
   grid.appendChild(corner);
 
-  FINGERPRINT_HOUR_LABELS.forEach((label) => {
-    const hourCell = document.createElement('div');
-    hourCell.className = 'fingerprint-grid__hour';
-    hourCell.textContent = label;
-    grid.appendChild(hourCell);
+  FINGERPRINT_WEEKDAY_SHORT.forEach((label, index) => {
+    const dayCell = document.createElement('div');
+    dayCell.className = 'fingerprint-grid__day';
+    dayCell.textContent = label ?? `Day ${index}`;
+    grid.appendChild(dayCell);
   });
 
   const cellMap = new Map();
@@ -2356,13 +2372,13 @@ const renderStationFingerprint = (card, fingerprint) => {
   let minValue = Number.POSITIVE_INFINITY;
   let maxValue = Number.NEGATIVE_INFINITY;
 
-  for (let weekday = 0; weekday < FINGERPRINT_WEEKDAY_SHORT.length; weekday += 1) {
-    const dayLabel = document.createElement('div');
-    dayLabel.className = 'fingerprint-grid__day';
-    dayLabel.textContent = FINGERPRINT_WEEKDAY_SHORT[weekday] ?? `Day ${weekday}`;
-    grid.appendChild(dayLabel);
+  for (let hour = 0; hour < FINGERPRINT_HOUR_LABELS.length; hour += 1) {
+    const hourLabel = document.createElement('div');
+    hourLabel.className = 'fingerprint-grid__hour';
+    hourLabel.textContent = formatFingerprintHourTick(hour) || FINGERPRINT_HOUR_LABELS[hour] || `${hour}:00`;
+    grid.appendChild(hourLabel);
 
-    for (let hour = 0; hour < FINGERPRINT_HOUR_LABELS.length; hour += 1) {
+    for (let weekday = 0; weekday < FINGERPRINT_WEEKDAY_SHORT.length; weekday += 1) {
       const cellData = cellMap.get(fingerprintCellKey(weekday, hour));
       const occupancy = Number(cellData?.metrics?.occupation_utilization_pct ?? 0);
       const coverage = Number(cellData?.coverage_ratio ?? 0);
