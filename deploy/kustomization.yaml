@@ -13,9 +13,9 @@ resources:
 images:
   - name: ghcr.io/dewgenenny/endolla-watcher-backend
     newName: ghcr.io/dewgenenny/endolla-watcher-backend
-    newTag: 96654214a7e66dbb64f30237b01eedfa6b40f59a
+    newTag: 555f9d386085fa5b8c070cdd93c28bf8b0cfd053
   - name: ghcr.io/dewgenenny/endolla-watcher-frontend
     newName: ghcr.io/dewgenenny/endolla-watcher-frontend
-    newTag: 96654214a7e66dbb64f30237b01eedfa6b40f59a
+    newTag: 555f9d386085fa5b8c070cdd93c28bf8b0cfd053
 commonLabels:
   app.kubernetes.io/part-of: endolla-watcher
