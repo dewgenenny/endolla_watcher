@@ -2123,20 +2123,20 @@ const formatFingerprintHourTick = (hour) => {
   if (!Number.isFinite(numeric) || numeric < 0) {
     return '';
   }
-  if (numeric === 0) {
-    return 'Midnight';
+  return numeric.toString().padStart(2, '0');
+};
+
+const formatFingerprintHourLabel = (hour) => {
+  const tick = formatFingerprintHourTick(hour);
+  if (tick) {
+    return `${tick}:00`;
   }
-  if (numeric === 12) {
-    return 'Noon';
-  }
-  const period = numeric < 12 ? 'AM' : 'PM';
-  const hour12 = numeric % 12 || 12;
-  return `${hour12.toString().padStart(2, '0')}:00 ${period}`;
+  return FINGERPRINT_HOUR_LABELS[hour] || `${hour}:00`;
 };
 
 const formatFingerprintCellLabel = (weekday, hour) => {
   const day = FINGERPRINT_WEEKDAY_LABELS[weekday] ?? `Day ${weekday}`;
-  const hourLabel = formatFingerprintHourTick(hour) || FINGERPRINT_HOUR_LABELS[hour] || `${hour}:00`;
+  const hourLabel = formatFingerprintHourLabel(hour);
   return `${day} ${hourLabel}`;
 };
 
