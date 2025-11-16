@@ -83,6 +83,15 @@ def test_dashboard_endpoint(tmp_path, monkeypatch, auto_fetch, db_url):
         assert payload["rule_counts"]["unused"] >= 0
         assert payload["locations"]["L1"]["lat"] == 41.0
         assert payload["last_fetch"] is None
+        assert "version" in payload
+        assert "last_data_update" in payload
+
+        status_response = client.get("/api/dashboard/status")
+        assert status_response.status_code == 200
+        status_payload = status_response.json()
+        assert status_payload["version"] == payload["version"]
+        assert status_payload["last_fetch"] is None
+        assert status_payload["last_data_update"] == payload["last_data_update"]
 
 
 @pytest.mark.parametrize("auto_fetch", ["0"])
@@ -361,3 +370,54 @@ def test_dashboard_cache_presets(monkeypatch, tmp_path, db_url):
         assert first.status_code == 200
         assert first.json() == {"days": 10, "granularity": "hour"}
         assert calls == [(10, "hour"), (5, "hour"), (5, "day")]
+
+
+def test_dashboard_status_endpoint(monkeypatch, tmp_path, db_url):
+    locations = tmp_path / "locations.json"
+    locations.write_text(
+        json.dumps({"locations": [{"id": "L1", "latitude": 41.0, "longitude": 2.0}]}),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setenv("ENDOLLA_DB_URL", db_url)
+    monkeypatch.setenv("ENDOLLA_AUTO_FETCH", "0")
+    monkeypatch.setenv("ENDOLLA_LOCATIONS_FILE", str(locations))
+
+    module = importlib.import_module("endolla_watcher.api")
+    api = importlib.reload(module)
+
+    def fake_build(settings, locations_map, days, granularity):
+        return {"result": "ok"}
+
+    update_calls = {"count": 0}
+
+    def fake_fetch_once(db_url_value, dataset_file):
+        update_calls["count"] += 1
+        return True
+
+    monkeypatch.setattr(api, "_build_dashboard", fake_build)
+    monkeypatch.setattr(api, "fetch_once", fake_fetch_once)
+
+    with TestClient(api.app) as client:
+        initial_status = client.get("/api/dashboard/status")
+        assert initial_status.status_code == 200
+        initial_payload = initial_status.json()
+        assert initial_payload["version"] == 0
+
+        dashboard = client.get("/api/dashboard")
+        assert dashboard.status_code == 200
+        assert dashboard.json() == {"result": "ok"}
+
+        before_refresh = client.get("/api/dashboard/status")
+        assert before_refresh.status_code == 200
+        assert before_refresh.json()["version"] == 0
+
+        refresh = client.post("/api/refresh")
+        assert refresh.status_code == 202
+        assert update_calls["count"] >= 1
+
+        after_refresh = client.get("/api/dashboard/status")
+        assert after_refresh.status_code == 200
+        refresh_payload = after_refresh.json()
+        assert refresh_payload["version"] == 1
+        assert isinstance(refresh_payload["last_data_update"], str)
