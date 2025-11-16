@@ -559,6 +559,8 @@ def _build_dashboard(
         "db": db_stats,
         "locations": locations,
         "last_fetch": getattr(app.state, "last_fetch", None),
+        "last_data_update": getattr(app.state, "last_data_update", None),
+        "version": getattr(app.state, "dashboard_version", 0),
     }
 
 
@@ -699,6 +701,20 @@ async def refresh() -> Dict[str, Any]:
     settings = _require_settings()
     await _fetch_once(settings)
     return {"status": "scheduled"}
+
+
+@app.get("/api/dashboard/status")
+async def dashboard_status() -> Dict[str, Any]:
+    """Expose dashboard metadata for clients that want to poll for changes."""
+
+    version = getattr(app.state, "dashboard_version", 0)
+    last_data_update = getattr(app.state, "last_data_update", None)
+    last_fetch = getattr(app.state, "last_fetch", None)
+    return {
+        "version": version,
+        "last_data_update": last_data_update,
+        "last_fetch": last_fetch,
+    }
 
 
 @app.get("/api/chargers/{location_id}/{station_id}")

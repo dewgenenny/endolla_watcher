@@ -1,6 +1,7 @@
 const API_BASE = window.ENDOLLA_API_BASE || '/api';
 const DEFAULT_DAYS = 5;
 const MAX_DAYS = 90;
+const DASHBOARD_STATUS_POLL_INTERVAL_MS = 60 * 1000;
 
 const yearEl = document.getElementById('year');
 if (yearEl) {
@@ -93,6 +94,14 @@ let nearMeAutoRequested = false;
 const stationHeatmapCards = new Map();
 let stationHeatmapSequence = 0;
 let stationHeatmapPending = 0;
+let currentDashboardDays = DEFAULT_DAYS;
+let lastDashboardVersion = null;
+let dashboardStatusTimerId = null;
+let dashboardStatusRequestInFlight = false;
+let dashboardAutoRefreshInFlight = false;
+let activeLocationId = null;
+let locationFetchInFlight = false;
+let locationAutoRefreshPending = false;
 
 const debugFlags = (() => {
   try {
@@ -1612,6 +1621,11 @@ const determineGranularity = (days) => {
   return 'day';
 };
 
+const parseDashboardVersion = (value) => {
+  const version = Number(value);
+  return Number.isFinite(version) ? version : null;
+};
+
 const formatTooltipTitle = (chart, dataIndex) => {
   const timelineForChart = chart.$timeline || [];
   const entry = timelineForChart[dataIndex];
@@ -1665,6 +1679,88 @@ const setChartStatus = (message) => {
   chargesStatus.textContent = message;
   chargesStatus.hidden = false;
 };
+
+function updateDashboardVersionMetadata(payload) {
+  const version = parseDashboardVersion(payload?.version);
+  if (version !== null) {
+    lastDashboardVersion = version;
+  }
+}
+
+function scheduleDashboardRefresh() {
+  if (dashboardAutoRefreshInFlight) {
+    return;
+  }
+  dashboardAutoRefreshInFlight = true;
+  loadDashboard(currentDashboardDays)
+    .catch((error) => {
+      console.error('Automatic dashboard refresh failed.', error);
+    })
+    .finally(() => {
+      dashboardAutoRefreshInFlight = false;
+    });
+}
+
+function scheduleLocationRefresh() {
+  if (!locationDetailRoot || !activeLocationId || locationFetchInFlight || locationAutoRefreshPending) {
+    return;
+  }
+  locationAutoRefreshPending = true;
+  fetchLocationDetails(activeLocationId)
+    .catch((error) => {
+      console.error('Automatic location refresh failed.', error);
+    })
+    .finally(() => {
+      locationAutoRefreshPending = false;
+    });
+}
+
+function handleDashboardStatusPayload(payload) {
+  const version = parseDashboardVersion(payload?.version);
+  if (version === null) {
+    return;
+  }
+  if (lastDashboardVersion === null) {
+    lastDashboardVersion = version;
+    return;
+  }
+  if (version > lastDashboardVersion) {
+    lastDashboardVersion = version;
+    scheduleDashboardRefresh();
+    scheduleLocationRefresh();
+  }
+}
+
+async function pollDashboardStatus() {
+  if (dashboardStatusRequestInFlight) {
+    return;
+  }
+  dashboardStatusRequestInFlight = true;
+  try {
+    const response = await fetch(`${API_BASE}/dashboard/status`);
+    if (!response.ok) {
+      throw new Error(`Backend returned ${response.status}`);
+    }
+    const payload = await response.json();
+    handleDashboardStatusPayload(payload);
+  } catch (error) {
+    console.warn('Unable to poll dashboard status.', error);
+  } finally {
+    dashboardStatusRequestInFlight = false;
+  }
+}
+
+function startDashboardStatusPolling() {
+  if (typeof window === 'undefined') {
+    return;
+  }
+  if (dashboardStatusTimerId !== null) {
+    return;
+  }
+  pollDashboardStatus();
+  const interval = Math.max(DASHBOARD_STATUS_POLL_INTERVAL_MS, 1000);
+  dashboardStatusTimerId = window.setInterval(pollDashboardStatus, interval);
+}
 
 const updateSummary = (stats, info) => {
   const mapping = {
@@ -3541,6 +3637,7 @@ const fetchLocationDetails = async (locationId) => {
     locationWeekChartStatus.hidden = false;
   }
 
+  locationFetchInFlight = true;
   try {
     const response = await fetch(`${API_BASE}/locations/${encodeURIComponent(locationId)}`);
     if (!response.ok) {
@@ -3566,6 +3663,8 @@ const fetchLocationDetails = async (locationId) => {
     setLocationError(error.message || 'Unable to load location details.');
     resetStationHeatmaps('Unable to load station fingerprints.');
     updateLocationMap(null);
+  } finally {
+    locationFetchInFlight = false;
   }
 };
 
@@ -3576,6 +3675,7 @@ const initLocationDetailPage = () => {
   const params = new URLSearchParams(window.location.search);
   const rawId = params.get('id') ?? params.get('location');
   const locationId = rawId ? rawId.trim() : '';
+  activeLocationId = locationId || null;
   if (!locationId) {
     setLocationLoading(null);
     setLocationError('No location specified.');
@@ -3587,6 +3687,7 @@ const initLocationDetailPage = () => {
 
 const loadDashboard = async (days = DEFAULT_DAYS) => {
   const targetDays = clampDays(days);
+  currentDashboardDays = targetDays;
   const targetGranularity = determineGranularity(targetDays);
   if (chargesRangeControl) {
     setRangeSelection(String(targetDays));
@@ -3631,6 +3732,7 @@ const loadDashboard = async (days = DEFAULT_DAYS) => {
       typeof responseGranularity === 'string' ? responseGranularity.toLowerCase() : 'day';
     updateChargesChart(series, normalizedGranularity);
     updateProblematic(data.problematic, data.locations);
+    updateDashboardVersionMetadata(data);
   } catch (error) {
     if (error.name === 'AbortError') {
       return;
@@ -3764,3 +3866,4 @@ if (chargesRangeControl) {
 }
 
 loadDashboard(DEFAULT_DAYS);
+startDashboardStatusPolling();
