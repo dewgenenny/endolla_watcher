@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -16,13 +17,11 @@
 
     gtag("config", "G-ZRHB04BPT7");
   </script>
-  <link
-    rel="icon"
-    type="image/svg+xml"
-    href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%2300418a'/%3E%3Cpath d='M20 20h24v24H20z' fill='%23f7c948'/%3E%3Ccircle cx='32' cy='32' r='10' fill='%23ffffff' opacity='.85'/%3E%3C/svg%3E"
-  >
+  <link rel="icon" type="image/svg+xml"
+    href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%2300418a'/%3E%3Cpath d='M20 20h24v24H20z' fill='%23f7c948'/%3E%3Ccircle cx='32' cy='32' r='10' fill='%23ffffff' opacity='.85'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="2025.css?v=20250101">
 </head>
+
 <body>
   <header class="site-header">
     <div class="container">
@@ -38,7 +37,8 @@
           <a href="nearme.html" class="navbar__link">Near me</a>
           <a href="problematic.html" class="navbar__link">Problematic</a>
           <a href="about.html" class="navbar__link">About</a>
-          <button type="button" class="switch" id="theme-toggle" role="switch" aria-checked="false" aria-label="Toggle dark mode" style="margin-left: var(--space-2);"></button>
+          <button type="button" class="switch" id="theme-toggle" role="switch" aria-checked="false"
+            aria-label="Toggle dark mode" style="margin-left: var(--space-2);"></button>
         </div>
       </nav>
     </div>
@@ -48,7 +48,8 @@
       <section class="page-intro" aria-label="Endolla Watcher overview">
         <p>
           Endolla Watcher is a small project that I made to keep a close eye on Barcelona's public charging network,
-          using the open data that the city shares (yay!) to help people visualise how the electric charging network is running :) 
+          using the open data that the city shares (yay!) to help people visualise how the electric charging network is
+          running :)
         </p>
       </section>
       <section class="section summary" aria-live="polite">
@@ -139,50 +140,22 @@
         <div class="section-header">
           <div class="section-title">
             <h2 id="charges-heading">Charging Activity</h2>
-            <p class="chart-subtitle"><span id="charges-total">–</span> charges <span id="charges-range-window">in this period</span></p>
+            <p class="chart-subtitle"><span id="charges-total">–</span> charges <span id="charges-range-window">in this
+                period</span></p>
           </div>
           <div class="range-select">
             <span class="range-label">Range</span>
-            <div
-              id="charges-range"
-              class="range-options"
-              role="radiogroup"
-              aria-label="Charging data range"
-            >
-              <button
-                type="button"
-                class="range-option is-active"
-                role="radio"
-                aria-checked="true"
-                data-value="5"
-              >
+            <div id="charges-range" class="range-options" role="radiogroup" aria-label="Charging data range">
+              <button type="button" class="range-option is-active" role="radio" aria-checked="true" data-value="5">
                 5 days
               </button>
-              <button
-                type="button"
-                class="range-option"
-                role="radio"
-                aria-checked="false"
-                data-value="10"
-              >
+              <button type="button" class="range-option" role="radio" aria-checked="false" data-value="10">
                 10 days
               </button>
-              <button
-                type="button"
-                class="range-option"
-                role="radio"
-                aria-checked="false"
-                data-value="15"
-              >
+              <button type="button" class="range-option" role="radio" aria-checked="false" data-value="15">
                 15 days
               </button>
-              <button
-                type="button"
-                class="range-option"
-                role="radio"
-                aria-checked="false"
-                data-value="30"
-              >
+              <button type="button" class="range-option" role="radio" aria-checked="false" data-value="30">
                 30 days
               </button>
             </div>
@@ -191,11 +164,7 @@
         <article class="card chart-card">
           <div class="card__body">
             <div class="chart-visual">
-              <canvas
-                id="charges-chart"
-                role="img"
-                aria-label="Line chart showing daily charging sessions"
-              ></canvas>
+              <canvas id="charges-chart" role="img" aria-label="Line chart showing daily charging sessions"></canvas>
               <div id="charges-chart-status" class="chart-status" hidden>Loading charging trend…</div>
             </div>
           </div>
@@ -231,6 +200,7 @@
   </footer>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.5/dist/chart.umd.min.js"></script>
   <script src="config.js"></script>
-  <script type="module" src="app.js"></script>
+  <script type="module" src="app.js?v=2"></script>
 </body>
+
 </html>
