@@ -1,4 +1,59 @@
 const API_BASE = window.ENDOLLA_API_BASE || '/api';
+
+/* Theme Logic */
+const THEME_KEY = 'endolla_theme';
+const THEME_ATTR = 'data-theme';
+
+const getSystemTheme = () => (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+
+const getSavedTheme = () => localStorage.getItem(THEME_KEY);
+
+const setTheme = (theme) => {
+  document.documentElement.setAttribute(THEME_ATTR, theme);
+  localStorage.setItem(THEME_KEY, theme);
+  updateThemeToggleAI(theme);
+};
+
+const updateThemeToggleAI = (theme) => {
+  const toggle = document.getElementById('theme-toggle');
+  if (!toggle) return;
+  const isDark = theme === 'dark';
+  toggle.setAttribute('aria-checked', isDark);
+  toggle.title = isDark ? 'Switch to light mode' : 'Switch to dark mode';
+  toggle.setAttribute('aria-label', toggle.title);
+};
+
+const initTheme = () => {
+  const saved = getSavedTheme();
+  const system = getSystemTheme();
+  const effective = saved || system;
+  document.documentElement.setAttribute(THEME_ATTR, effective);
+  
+  // Wait for DOM to be ready to bind button
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', bindThemeToggle);
+  } else {
+    bindThemeToggle();
+  }
+};
+
+const bindThemeToggle = () => {
+  const toggle = document.getElementById('theme-toggle');
+  if (!toggle) return;
+  
+  const currentTheme = document.documentElement.getAttribute(THEME_ATTR) || getSystemTheme();
+  updateThemeToggleAI(currentTheme);
+
+  toggle.addEventListener('click', () => {
+    const current = document.documentElement.getAttribute(THEME_ATTR) || 'light';
+    const next = current === 'light' ? 'dark' : 'light';
+    setTheme(next);
+  });
+};
+
+// Run immediately to avoid flash
+initTheme();
+
 const DEFAULT_DAYS = 5;
 const MAX_DAYS = 90;
 const DASHBOARD_STATUS_POLL_INTERVAL_MS = 60 * 1000;

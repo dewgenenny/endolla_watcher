@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -16,13 +17,11 @@
 
     gtag("config", "G-ZRHB04BPT7");
   </script>
-  <link
-    rel="icon"
-    type="image/svg+xml"
-    href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%2300418a'/%3E%3Cpath d='M20 20h24v24H20z' fill='%23f7c948'/%3E%3Ccircle cx='32' cy='32' r='10' fill='%23ffffff' opacity='.85'/%3E%3C/svg%3E"
-  >
+  <link rel="icon" type="image/svg+xml"
+    href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%2300418a'/%3E%3Cpath d='M20 20h24v24H20z' fill='%23f7c948'/%3E%3Ccircle cx='32' cy='32' r='10' fill='%23ffffff' opacity='.85'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="2025.css?v=20250101">
 </head>
+
 <body>
   <header class="site-header">
     <div class="container">
@@ -38,6 +37,8 @@
           <a href="nearme.html" class="navbar__link">Near me</a>
           <a href="problematic.html" class="navbar__link">Problematic</a>
           <a href="about.html" class="navbar__link">About</a>
+          <button type="button" class="switch" id="theme-toggle" role="switch" aria-checked="false"
+            aria-label="Toggle dark mode" style="margin-left: var(--space-2);"></button>
         </div>
       </nav>
     </div>
@@ -51,53 +52,23 @@
             <p class="muted" id="utilization-note">Loading utilization metrics…</p>
           </div>
         </div>
-        <div
-          id="utilization-tabs"
-          class="utilization-tabs"
-          role="tablist"
-          aria-label="Utilization breakdown"
-        >
-          <button
-            type="button"
-            class="utilization-tab is-active"
-            role="tab"
-            aria-selected="true"
-            aria-controls="utilization-panel-locations"
-            data-tab="locations"
-          >
+        <div id="utilization-tabs" class="utilization-tabs" role="tablist" aria-label="Utilization breakdown">
+          <button type="button" class="utilization-tab is-active" role="tab" aria-selected="true"
+            aria-controls="utilization-panel-locations" data-tab="locations">
             Locations
           </button>
-          <button
-            type="button"
-            class="utilization-tab"
-            role="tab"
-            aria-selected="false"
-            aria-controls="utilization-panel-stations"
-            data-tab="stations"
-            tabindex="-1"
-          >
+          <button type="button" class="utilization-tab" role="tab" aria-selected="false"
+            aria-controls="utilization-panel-stations" data-tab="stations" tabindex="-1">
             Stations
           </button>
-          <button
-            type="button"
-            class="utilization-tab"
-            role="tab"
-            aria-selected="false"
-            aria-controls="utilization-panel-ports"
-            data-tab="ports"
-            tabindex="-1"
-          >
+          <button type="button" class="utilization-tab" role="tab" aria-selected="false"
+            aria-controls="utilization-panel-ports" data-tab="ports" tabindex="-1">
             Ports
           </button>
         </div>
         <div class="utilization-panels">
-          <section
-            id="utilization-panel-locations"
-            class="utilization-panel is-active"
-            data-utilization-panel="locations"
-            role="tabpanel"
-            aria-labelledby="location-utilization-heading"
-          >
+          <section id="utilization-panel-locations" class="utilization-panel is-active"
+            data-utilization-panel="locations" role="tabpanel" aria-labelledby="location-utilization-heading">
             <p class="muted utilization-panel-note">
               Locations ordered by occupied time during the telemetry window.
             </p>
@@ -130,21 +101,10 @@
                 <tbody id="utilization-locations-body"></tbody>
               </table>
             </div>
-            <div
-              class="utilization-footer"
-              data-utilization-footer="locations"
-              aria-live="polite"
-              hidden
-            ></div>
+            <div class="utilization-footer" data-utilization-footer="locations" aria-live="polite" hidden></div>
           </section>
-          <section
-            id="utilization-panel-stations"
-            class="utilization-panel"
-            data-utilization-panel="stations"
-            role="tabpanel"
-            aria-labelledby="location-utilization-heading"
-            hidden
-          >
+          <section id="utilization-panel-stations" class="utilization-panel" data-utilization-panel="stations"
+            role="tabpanel" aria-labelledby="location-utilization-heading" hidden>
             <p class="muted utilization-panel-note">
               Station utilization aggregates all ports at the given location and station.
             </p>
@@ -172,21 +132,10 @@
                 <tbody id="utilization-stations-body"></tbody>
               </table>
             </div>
-            <div
-              class="utilization-footer"
-              data-utilization-footer="stations"
-              aria-live="polite"
-              hidden
-            ></div>
+            <div class="utilization-footer" data-utilization-footer="stations" aria-live="polite" hidden></div>
           </section>
-          <section
-            id="utilization-panel-ports"
-            class="utilization-panel"
-            data-utilization-panel="ports"
-            role="tabpanel"
-            aria-labelledby="location-utilization-heading"
-            hidden
-          >
+          <section id="utilization-panel-ports" class="utilization-panel" data-utilization-panel="ports" role="tabpanel"
+            aria-labelledby="location-utilization-heading" hidden>
             <p class="muted utilization-panel-note">
               Individual port utilization highlights the busiest sockets in the network.
             </p>
@@ -214,12 +163,7 @@
                 <tbody id="utilization-ports-body"></tbody>
               </table>
             </div>
-            <div
-              class="utilization-footer"
-              data-utilization-footer="ports"
-              aria-live="polite"
-              hidden
-            ></div>
+            <div class="utilization-footer" data-utilization-footer="ports" aria-live="polite" hidden></div>
           </section>
         </div>
       </section>
@@ -234,4 +178,5 @@
   <script src="config.js"></script>
   <script type="module" src="app.js"></script>
 </body>
+
 </html>

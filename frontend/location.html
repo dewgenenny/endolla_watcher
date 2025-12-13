@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -16,14 +17,12 @@
 
     gtag("config", "G-ZRHB04BPT7");
   </script>
-  <link
-    rel="icon"
-    type="image/svg+xml"
-    href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%2300418a'/%3E%3Cpath d='M20 20h24v24H20z' fill='%23f7c948'/%3E%3Ccircle cx='32' cy='32' r='10' fill='%23ffffff' opacity='.85'/%3E%3C/svg%3E'
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%2300418a'/%3E%3Cpath d='M20 20h24v24H20z' fill='%23f7c948'/%3E%3Ccircle cx='32' cy='32' r='10' fill='%23ffffff' opacity='.85'/%3E%3C/svg%3E'
   >
-  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css" crossorigin="">
+  <link rel=" stylesheet" href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css" crossorigin="">
   <link rel="stylesheet" href="2025.css?v=20250101">
 </head>
+
 <body>
   <header class="site-header">
     <div class="container">
@@ -39,6 +38,8 @@
           <a href="nearme.html" class="navbar__link">Near me</a>
           <a href="problematic.html" class="navbar__link">Problematic</a>
           <a href="about.html" class="navbar__link">About</a>
+          <button type="button" class="switch" id="theme-toggle" role="switch" aria-checked="false"
+            aria-label="Toggle dark mode" style="margin-left: var(--space-2);"></button>
         </div>
       </nav>
     </div>
@@ -93,10 +94,8 @@
               </div>
             </div>
             <div class="chart-visual">
-              <canvas
-                id="location-usage-day"
-                aria-label="Chart showing hourly utilization for the past 24 hours"
-              ></canvas>
+              <canvas id="location-usage-day"
+                aria-label="Chart showing hourly utilization for the past 24 hours"></canvas>
               <div id="location-usage-day-status" class="chart-status" hidden>Loading hourly usage…</div>
             </div>
           </div>
@@ -110,10 +109,8 @@
               </div>
             </div>
             <div class="chart-visual">
-              <canvas
-                id="location-usage-week"
-                aria-label="Chart showing daily utilization for the past seven days"
-              ></canvas>
+              <canvas id="location-usage-week"
+                aria-label="Chart showing daily utilization for the past seven days"></canvas>
               <div id="location-usage-week-status" class="chart-status" hidden>Loading weekly usage…</div>
             </div>
           </div>
@@ -129,11 +126,7 @@
           </div>
         </div>
         <p class="muted" id="station-heatmap-status">Loading station fingerprints…</p>
-        <div
-          id="station-heatmap-container"
-          class="station-heatmap-grid"
-          aria-live="polite"
-        ></div>
+        <div id="station-heatmap-container" class="station-heatmap-grid" aria-live="polite"></div>
       </section>
       <section class="section location-map-section">
         <h3>Map</h3>
@@ -153,4 +146,5 @@
   <script src="config.js"></script>
   <script type="module" src="app.js"></script>
 </body>
+
 </html>
