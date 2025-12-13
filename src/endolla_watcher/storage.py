@@ -261,7 +261,7 @@ def connect(config: MySQLConfig | str | None = None) -> Connection:
         cursorclass=pymysql.cursors.Cursor,
     )
     _ensure_schema(conn)
-    prune_old_data(conn)
+    # prune_old_data(conn) - Moved to save_snapshot to avoid overhead on every read
     return conn
 
 
@@ -826,7 +826,10 @@ def _count_unused_chargers(
         stations.setdefault((loc, sta), {})[port] = events
     count = 0
     for ports in stations.values():
-        earliest_ts = min(ts for events in ports.values() for ts, _ in events)
+        all_timestamps = [event[0] for events in ports.values() for event in events]
+        if not all_timestamps:
+            continue
+        earliest_ts = min(all_timestamps)
         history_span = now - earliest_ts
         if history_span >= timedelta(days=days):
             since_unused = now - timedelta(days=days)
