@@ -52,6 +52,41 @@
           running :)
         </p>
       </section>
+      <section class="section charges-insight" aria-labelledby="charges-heading">
+        <div class="section-header">
+          <div class="section-title">
+            <h2 id="charges-heading">Charging Activity</h2>
+            <p class="chart-subtitle"><span id="charges-total">–</span> charges <span id="charges-range-window">in this
+                period</span></p>
+          </div>
+          <div class="range-select">
+            <span class="range-label">Range</span>
+            <div id="charges-range" class="range-options" role="radiogroup" aria-label="Charging data range">
+              <button type="button" class="range-option is-active" role="radio" aria-checked="true" data-value="5">
+                5 days
+              </button>
+              <button type="button" class="range-option" role="radio" aria-checked="false" data-value="10">
+                10 days
+              </button>
+              <button type="button" class="range-option" role="radio" aria-checked="false" data-value="15">
+                15 days
+              </button>
+              <button type="button" class="range-option" role="radio" aria-checked="false" data-value="30">
+                30 days
+              </button>
+            </div>
+          </div>
+        </div>
+        <article class="card chart-card">
+          <div class="card__body">
+            <div class="chart-visual">
+              <canvas id="charges-chart" role="img" aria-label="Line chart showing daily charging sessions"></canvas>
+              <div id="charges-chart-status" class="chart-status" hidden>Loading charging trend…</div>
+            </div>
+          </div>
+        </article>
+      </section>
+
       <section class="section summary" aria-live="polite">
         <h2>Network Overview</h2>
         <div class="grid" id="summary-cards">
@@ -134,41 +169,6 @@
           Explore detailed location-level utilization on the
           <a href="locations.html">Locations overview</a> page.
         </p>
-      </section>
-
-      <section class="section charges-insight" aria-labelledby="charges-heading">
-        <div class="section-header">
-          <div class="section-title">
-            <h2 id="charges-heading">Charging Activity</h2>
-            <p class="chart-subtitle"><span id="charges-total">–</span> charges <span id="charges-range-window">in this
-                period</span></p>
-          </div>
-          <div class="range-select">
-            <span class="range-label">Range</span>
-            <div id="charges-range" class="range-options" role="radiogroup" aria-label="Charging data range">
-              <button type="button" class="range-option is-active" role="radio" aria-checked="true" data-value="5">
-                5 days
-              </button>
-              <button type="button" class="range-option" role="radio" aria-checked="false" data-value="10">
-                10 days
-              </button>
-              <button type="button" class="range-option" role="radio" aria-checked="false" data-value="15">
-                15 days
-              </button>
-              <button type="button" class="range-option" role="radio" aria-checked="false" data-value="30">
-                30 days
-              </button>
-            </div>
-          </div>
-        </div>
-        <article class="card chart-card">
-          <div class="card__body">
-            <div class="chart-visual">
-              <canvas id="charges-chart" role="img" aria-label="Line chart showing daily charging sessions"></canvas>
-              <div id="charges-chart-status" class="chart-status" hidden>Loading charging trend…</div>
-            </div>
-          </div>
-        </article>
       </section>
 
       <section class="section rules">
