@@ -164,41 +164,46 @@ def main() -> None:
         raise SystemExit("--db-url or ENDOLLA_DB_URL must be provided")
 
     while True:
-        now = time.monotonic()
-        if now >= next_fetch:
-            logger.info("Fetching data")
-            fetch_once(args.db_url, args.file)
-            next_fetch += args.fetch_interval
-            if next_fetch <= now:
-                # Catch up if the fetch took longer than the interval
-                next_fetch = now + args.fetch_interval
+        try:
+            now = time.monotonic()
+            if now >= next_fetch:
+                logger.info("Fetching data")
+                fetch_once(args.db_url, args.file)
+                next_fetch += args.fetch_interval
+                if next_fetch <= now:
+                    # Catch up if the fetch took longer than the interval
+                    next_fetch = now + args.fetch_interval
 
-        if now >= next_update:
-            logger.info("Updating report")
-            update_once(args.output, args.db_url, rules, locations)
-            if args.push_site:
-                cmd = [
-                    "push_site.py",
-                    "--site",
-                    str(args.output.parent),
-                    "--branch",
-                    args.push_branch,
-                    "--remote",
-                    args.push_remote,
-                ]
-                if args.push_repo:
-                    cmd.extend(["--repo", args.push_repo])
-                try:
-                    subprocess.check_call(cmd)
-                except subprocess.CalledProcessError as exc:
-                    logger.error("push_site failed: %s", exc)
-            next_update += args.update_interval
-            if next_update <= now:
-                next_update = now + args.update_interval
+            if now >= next_update:
+                logger.info("Updating report")
+                update_once(args.output, args.db_url, rules, locations)
+                if args.push_site:
+                    cmd = [
+                        "push_site.py",
+                        "--site",
+                        str(args.output.parent),
+                        "--branch",
+                        args.push_branch,
+                        "--remote",
+                        args.push_remote,
+                    ]
+                    if args.push_repo:
+                        cmd.extend(["--repo", args.push_repo])
+                    try:
+                        subprocess.check_call(cmd)
+                    except subprocess.CalledProcessError as exc:
+                        logger.error("push_site failed: %s", exc)
+                next_update += args.update_interval
+                if next_update <= now:
+                    next_update = now + args.update_interval
 
-        sleep_for = min(next_fetch, next_update) - time.monotonic()
-        if sleep_for > 0:
-            time.sleep(sleep_for)
+            sleep_for = min(next_fetch, next_update) - time.monotonic()
+            if sleep_for > 0:
+                time.sleep(sleep_for)
+
+        except Exception:
+            logger.exception("Unexpected error in main loop")
+            time.sleep(5)
 
 
 if __name__ == "__main__":
